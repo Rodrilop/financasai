@@ -51,6 +51,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="app-layout">
+        <div className="mobile-header">
+          <span>FinançasAI</span>
+        </div>
         <Sidebar month={month} />
         <main className="main-content">
           <Routes>
