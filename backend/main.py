@@ -255,7 +255,7 @@ def recommendations(request: Request, month: Optional[str] = None, user: dict = 
 @app.post("/api/chat")
 def chat(request: Request, data: ChatIn, user: dict = Depends(get_current_user)):
     analysis_data = compute_analysis(user["id"], data.month)
-    answer = chat_with_ai(data.question, analysis_data)
+    answer = chat_with_ai(data.question, analysis_data, user["id"])
     return {"answer": answer}
 
 # ── Market & Investments ──────────────────────────────────────────────────────

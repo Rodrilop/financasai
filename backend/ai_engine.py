@@ -51,25 +51,54 @@ Seja direto, use linguagem simples e mencione valores reais quando relevante. M�
     except Exception as e:
         return f"⚠️ IA temporariamente indisponível. Veja os alertas automáticos abaixo.\n\nErro: {str(e)}"
 
-def chat_with_ai(question: str, analysis: dict) -> str:
-    """Answer user questions about their finances."""
+def chat_with_ai(question: str, analysis: dict, user_id: int) -> str:
+    """Answer user questions and execute financial actions (Agent)."""
     try:
-        context = f"""Dados financeiros do usuário:
-- Renda: R$ {analysis.get('total_income',0):.2f}
-- Gastos: R$ {analysis.get('total_expenses',0):.2f}
-- Saldo: R$ {analysis.get('balance',0):.2f}
-- Por categoria: {analysis.get('category_totals',{})}
-- Por prioridade: {analysis.get('priority_totals',{})}"""
+        def add_expense_tool(description: str, amount: float, category: str, priority: str, date: str) -> dict:
+            """Adiciona uma nova despesa no sistema do usuário. Use esta ferramenta APENAS quando o usuário disser que gastou/comprou algo.
+            
+            Args:
+                description: Descrição curta do gasto (ex: 'Almoço no Ifood', 'Conta de Luz', 'Tênis').
+                amount: Valor numérico positivo do gasto. Extraia do texto do usuário.
+                category: Categoria do gasto. Tente classificar em uma destas: Alimentação, Transporte, Moradia, Saúde, Lazer, Educação, Assinaturas, Outros. Padrão: Outros.
+                priority: Nível de importância. Tente classificar em: Essencial, Importante, Opcional. Padrão: Opcional.
+                date: Data do gasto no formato YYYY-MM-DD. Se hoje, use a data atual.
+            """
+            from database import get_connection
+            try:
+                conn = get_connection()
+                conn.execute(
+                    "INSERT INTO expenses (user_id, description, amount, category, priority, date, notes) VALUES (?,?,?,?,?,?,?)",
+                    (user_id, description, float(amount), category, priority, date, "Criado pelo Agente IA")
+                )
+                conn.commit()
+                conn.close()
+                return {"status": "success", "message": f"Despesa salva com sucesso: {description} (R$ {amount:.2f})"}
+            except Exception as e:
+                return {"status": "error", "message": str(e)}
 
-        prompt = f"""{context}
+        instruction = """Você é o Assistente Financeiro IA Pessoal (Consultor Autônomo) do app FinançasAI.
+Você tem acesso aos dados do usuário e ferramentas (tools). 
+SEMPRE que o usuário informar que fez um gasto/compra (ex: "gastei X", "comprei Y", "adicione uma despesa de Z"), você DEVE usar a ferramenta 'add_expense_tool' para salvar a despesa.
+Não diga apenas como ele pode fazer isso, FAÇA você mesmo pela ferramenta.
+Após adicionar, confirme gentilmente a ação. Seja conciso e amigável."""
 
-Pergunta do usuário: {question}
-
-Responda em português, de forma clara e objetiva. Se não tiver dados suficientes, diga o que o usuário precisa informar."""
-
-        model = genai.GenerativeModel(model_name)
-        response = model.generate_content(prompt)
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            tools=[add_expense_tool],
+            system_instruction=instruction
+        )
         
+        chat = model.start_chat(enable_automatic_function_calling=True)
+        
+        context = f"""[Contexto Financeiro Atual]
+- Renda: R$ {analysis.get('total_income',0):.2f}
+- Gastos Totais: R$ {analysis.get('total_expenses',0):.2f}
+- Saldo Livre: R$ {analysis.get('balance',0):.2f}
+
+O usuário diz: {question}"""
+
+        response = chat.send_message(context)
         return response.text
     except Exception as e:
-        return f"Não foi possível processar sua pergunta no momento. Erro: {str(e)}"
+        return f"Erro ao processar com a IA ou salvar o dado. Tente novamente mais tarde. Detalhes: {str(e)}"
