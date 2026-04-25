@@ -1,19 +1,14 @@
-# 📊 FinançasAI
+# 🤖 FinançasAI: O seu Agente Financeiro Inteligente
 
-O **FinançasAI** é um assistente financeiro pessoal completo, com design moderno em dark mode e totalmente responsivo. Ajuda você a gerenciar despesas, entender seus hábitos de consumo e receber recomendações de investimento personalizadas com **Inteligência Artificial (Google Gemini)**.
+O **FinançasAI** é uma plataforma de gestão financeira revolucionária que utiliza Inteligência Artificial Multimodal para transformar a maneira como você lida com dinheiro.
 
----
+## ✨ Funcionalidades "Agent-First"
 
-## 🌟 Principais Funcionalidades
-
-- **Gerenciamento de Despesas** — Adicione, edite, categorize e priorize gastos ("Essencial", "Importante", "Opcional"), com exclusão em massa e filtros avançados.
-- **Autenticação Segura** — Login e registro com JWT e senhas hasheadas via `bcrypt`.
-- **Análise com IA** — Integração com a API do Google Gemini (gemini-2.5-flash) para avaliar saúde financeira, sugerir cortes e recomendar investimentos com base no seu perfil.
-- **Painel de Investimentos** — Alocação de carteira (Ações, FIIs, Tesouro Selic, CDBs) adaptada ao perfil: Conservador, Moderado ou Agressivo.
-- **Dashboard e Gráficos** — Resumo visual dos gastos por categoria usando `recharts`.
-- **Design Responsivo** — Layout premium em dark mode com Bottom Navigation em dispositivos móveis.
-
----
+- **📸 Visão Computacional:** Tire fotos de seus cupons fiscais e a IA registra os gastos automaticamente.
+- **🎙️ Comandos de Voz:** Fale naturalmente com o app. Ele entende, transcreve e executa suas ordens via áudio nativo.
+- **📱 WhatsApp Integration:** Controle suas finanças direto pelo WhatsApp (via Webhook Twilio).
+- **🔎 Investigação Web:** O Agente pesquisa taxas de juros, inflação e notícias do mercado em tempo real.
+- **🔔 Motor Proativo:** A IA analisa seus dados em background e envia notificações automáticas com dicas de economia.
 
 ## 🛠️ Tecnologias Utilizadas
 
