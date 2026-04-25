@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom'
 import { useContext, useEffect, useState } from 'react'
-import axios from 'axios'
+import api from './api/client'
 import Dashboard from './pages/Dashboard'
 import Expenses from './pages/Expenses'
 import Analysis from './pages/Analysis'
@@ -69,27 +69,12 @@ export default function App() {
   const [month, setMonth] = useState('')
 
   useEffect(() => {
-    // Intercepta respostas 401 para limpar o localStorage
-    const interceptor = axios.interceptors.response.use(
-      response => response,
-      error => {
-        if (error.response?.status === 401) {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('user_name');
-          window.location.href = '/login';
-        }
-        return Promise.reject(error);
-      }
-    );
-
-    const token = localStorage.getItem('access_token');
+    const token = localStorage.getItem('access_token')
     if (token) {
-        axios.get('/api/settings').then(r => {
-          setMonth(r.data.reference_month || '')
-        }).catch(() => {})
+      api.get('/api/settings').then(r => {
+        setMonth(r.data.reference_month || '')
+      }).catch(() => {})
     }
-
-    return () => axios.interceptors.response.eject(interceptor);
   }, [])
 
   return (

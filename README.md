@@ -181,4 +181,67 @@ O repositório possui um pipeline de GitHub Actions configurado em `.github/` qu
 
 ---
 
+## 🆓 Deploy Gratuito em Produção
+
+Stack 100% gratuito para projetos pessoais:
+
+| Serviço | Plataforma | Custo |
+|---|---|---|
+| **Frontend** | [Vercel](https://vercel.com) | Grátis |
+| **Backend** | [Render](https://render.com) | Grátis (dorme após 15min) |
+| **Banco de dados** | [Turso](https://turso.tech) | Grátis (5GB) |
+| **Anti-sleep** | [UptimeRobot](https://uptimerobot.com) | Grátis |
+
+### Passo 1 — Banco de dados (Turso)
+
+1. Crie uma conta em [turso.tech](https://turso.tech)
+2. Instale a CLI: `npm install -g @turso/cli`
+3. Faça login: `turso auth login`
+4. Crie o banco: `turso db create financasai`
+5. Obtenha as credenciais:
+   ```bash
+   turso db show financasai --url   # → TURSO_DATABASE_URL
+   turso db tokens create financasai # → TURSO_AUTH_TOKEN
+   ```
+
+### Passo 2 — Backend (Render)
+
+1. Acesse [render.com](https://render.com) e conecte seu repositório GitHub
+2. Crie um **Web Service** → selecione o repositório → defina:
+   - **Root Directory**: `backend`
+   - **Runtime**: Docker
+   - **Instance Type**: Free
+3. Em **Environment Variables**, adicione:
+   ```
+   GEMINI_API_KEY=sua_chave_aqui
+   GEMINI_MODEL=gemini-2.5-flash
+   JWT_SECRET_KEY=chave_secreta_forte_aleatoria
+   TURSO_DATABASE_URL=libsql://financasai-...turso.io
+   TURSO_AUTH_TOKEN=eyJh...
+   ```
+4. Copie a URL do serviço: `https://financasai-backend.onrender.com`
+
+### Passo 3 — Frontend (Vercel)
+
+1. Acesse [vercel.com](https://vercel.com) e conecte seu repositório GitHub
+2. Crie um novo projeto → selecione o repositório → defina:
+   - **Root Directory**: `frontend`
+   - **Framework Preset**: Vite (detectado automaticamente)
+3. Em **Environment Variables**, adicione:
+   ```
+   VITE_API_URL=https://financasai-backend.onrender.com
+   ```
+4. Clique em **Deploy** — sua URL será `https://financasai.vercel.app`
+
+### Passo 4 — Anti-sleep (UptimeRobot)
+
+1. Crie uma conta em [uptimerobot.com](https://uptimerobot.com)
+2. Crie um novo monitor:
+   - **Tipo**: HTTP(S)
+   - **URL**: `https://financasai-backend.onrender.com/health`
+   - **Intervalo**: 5 minutos
+3. Isso mantém o backend acordado e evita o cold start
+
+---
+
 Feito com 💻 e IA para a sua liberdade financeira!

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import axios from 'axios'
+﻿import { useEffect, useState } from 'react'
+import api from '../api/client'
 
 function fmt(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
 
@@ -11,13 +11,13 @@ export default function Settings({ onMonthChange }) {
   const [loading, setLoading]     = useState(true)
 
   useEffect(() => {
-    Promise.all([axios.get('/api/settings'), axios.get('/api/income')])
+    Promise.all([api.get('/api/settings'), api.get('/api/income')])
       .then(([s, i]) => { setSettings(s.data); setIncome(i.data); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
 
   const save = async () => {
-    await axios.put('/api/settings', settings)
+    await api.put('/api/settings', settings)
     onMonthChange?.(settings.reference_month)
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
@@ -25,13 +25,13 @@ export default function Settings({ onMonthChange }) {
 
   const addIncome = async () => {
     if (!newInc.name || !newInc.amount) return
-    const r = await axios.post('/api/income', { name: newInc.name, amount: parseFloat(newInc.amount) })
+    const r = await api.post('/api/income', { name: newInc.name, amount: parseFloat(newInc.amount) })
     setIncome(i => [...i, r.data])
     setNewInc({ name: '', amount: '' })
   }
 
   const removeIncome = async (id) => {
-    await axios.delete(`/api/income/${id}`)
+    await api.delete(`/api/income/${id}`)
     setIncome(i => i.filter(x => x.id !== id))
   }
 
@@ -43,34 +43,34 @@ export default function Settings({ onMonthChange }) {
   return (
     <div>
       <div className="page-header">
-        <h1>⚙️ Configurações</h1>
+        <h1>âš™ï¸ ConfiguraÃ§Ãµes</h1>
         <p>Personalize seu perfil financeiro e metas</p>
       </div>
 
       {/* Income */}
       <div className="settings-section">
-        <h3>💼 Renda</h3>
+        <h3>ðŸ’¼ Renda</h3>
         <div className="form-grid">
           <div className="form-group">
-            <label>Salário Mensal (R$)</label>
+            <label>SalÃ¡rio Mensal (R$)</label>
             <input className="form-control" type="number" step="0.01" min="0"
               value={settings.salary || ''} onChange={e => set('salary', parseFloat(e.target.value)||0)}
               placeholder="0,00" />
           </div>
           <div className="form-group">
-            <label>Mês de Referência</label>
+            <label>MÃªs de ReferÃªncia</label>
             <input className="form-control" type="month" value={settings.reference_month || ''}
               onChange={e => set('reference_month', e.target.value)} style={{ colorScheme: 'dark' }} />
           </div>
         </div>
 
         <div style={{ marginTop: 8 }}>
-          <div className="chart-title" style={{ marginBottom: 10 }}>➕ Rendas Extras</div>
+          <div className="chart-title" style={{ marginBottom: 10 }}>âž• Rendas Extras</div>
           {income.map(i => (
             <div key={i.id} className="income-item">
               <span className="income-name">{i.name}</span>
               <span className="income-amount">{fmt(i.amount)}</span>
-              <button className="btn-icon" onClick={() => removeIncome(i.id)}>🗑️</button>
+              <button className="btn-icon" onClick={() => removeIncome(i.id)}>ðŸ—‘ï¸</button>
             </div>
           ))}
           <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
@@ -85,10 +85,10 @@ export default function Settings({ onMonthChange }) {
 
       {/* Goals */}
       <div className="settings-section">
-        <h3>🎯 Metas</h3>
+        <h3>ðŸŽ¯ Metas</h3>
         <div className="form-grid">
           <div className="form-group">
-            <label>Meta Reserva de Emergência (R$)</label>
+            <label>Meta Reserva de EmergÃªncia (R$)</label>
             <input className="form-control" type="number" step="0.01" min="0"
               value={settings.emergency_reserve_goal || ''} onChange={e => set('emergency_reserve_goal', parseFloat(e.target.value)||0)}
               placeholder="Ex: 18000 (6 meses de gastos)" />
@@ -106,9 +106,9 @@ export default function Settings({ onMonthChange }) {
 
       {/* Investor Profile */}
       <div className="settings-section">
-        <h3>📈 Perfil de Investidor</h3>
+        <h3>ðŸ“ˆ Perfil de Investidor</h3>
         <div className="profile-grid">
-          {[['conservador','🟢','Conservador'],['moderado','🟡','Moderado'],['agressivo','🔴','Agressivo']].map(([k,i,l]) => (
+          {[['conservador','ðŸŸ¢','Conservador'],['moderado','ðŸŸ¡','Moderado'],['agressivo','ðŸ”´','Agressivo']].map(([k,i,l]) => (
             <div key={k} className={`profile-btn${settings.investor_profile === k ? ' active' : ''}`} onClick={() => set('investor_profile', k)}>
               <span className="icon">{i}</span>
               <div className="name">{l}</div>
@@ -119,11 +119,11 @@ export default function Settings({ onMonthChange }) {
 
       {/* Budget rules */}
       <div className="settings-section">
-        <h3>🏷️ Regra Orçamentária <span style={{ fontSize: 12, color: totalBudget === 100 ? 'var(--accent)' : 'var(--red)', fontWeight: 600 }}>({totalBudget}% — deve somar 100%)</span></h3>
+        <h3>ðŸ·ï¸ Regra OrÃ§amentÃ¡ria <span style={{ fontSize: 12, color: totalBudget === 100 ? 'var(--accent)' : 'var(--red)', fontWeight: 600 }}>({totalBudget}% â€” deve somar 100%)</span></h3>
         {[
-          ['Essenciais (Moradia, Alimentação, Saúde...)', 'budget_essential_pct'],
-          ['Importantes (Educação, Pets, Serviços...)', 'budget_important_pct'],
-          ['Opcionais (Lazer, Assinaturas, Vestuário...)', 'budget_optional_pct'],
+          ['Essenciais (Moradia, AlimentaÃ§Ã£o, SaÃºde...)', 'budget_essential_pct'],
+          ['Importantes (EducaÃ§Ã£o, Pets, ServiÃ§os...)', 'budget_important_pct'],
+          ['Opcionais (Lazer, Assinaturas, VestuÃ¡rio...)', 'budget_optional_pct'],
         ].map(([label, key]) => (
           <div className="form-group" key={key}>
             <label>{label}</label>
@@ -137,9 +137,10 @@ export default function Settings({ onMonthChange }) {
       </div>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <button className="btn btn-primary" onClick={save}>💾 Salvar Configurações</button>
-        {saved && <span style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600 }}>✅ Salvo com sucesso!</span>}
+        <button className="btn btn-primary" onClick={save}>ðŸ’¾ Salvar ConfiguraÃ§Ãµes</button>
+        {saved && <span style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600 }}>âœ… Salvo com sucesso!</span>}
       </div>
     </div>
   )
 }
+

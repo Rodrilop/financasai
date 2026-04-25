@@ -1,16 +1,16 @@
-import { useEffect, useState } from 'react'
-import axios from 'axios'
+﻿import { useEffect, useState } from 'react'
+import api from '../api/client'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 function fmt(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
 
 const PROFILES = [
-  { key: 'conservador', icon: '🟢', name: 'Conservador', desc: 'Segurança e renda estável' },
-  { key: 'moderado',    icon: '🟡', name: 'Moderado',    desc: 'Equilíbrio crescimento/risco' },
-  { key: 'agressivo',   icon: '🔴', name: 'Agressivo',   desc: 'Crescimento patrimonial' },
+  { key: 'conservador', icon: 'ðŸŸ¢', name: 'Conservador', desc: 'SeguranÃ§a e renda estÃ¡vel' },
+  { key: 'moderado',    icon: 'ðŸŸ¡', name: 'Moderado',    desc: 'EquilÃ­brio crescimento/risco' },
+  { key: 'agressivo',   icon: 'ðŸ”´', name: 'Agressivo',   desc: 'Crescimento patrimonial' },
 ]
 
-const SIG = { buy: { label: '🟢 Compra', cls: 'signal-buy' }, neutral: { label: '🟡 Neutro', cls: 'signal-neutral' }, wait: { label: '🔴 Aguardar', cls: 'signal-wait' } }
+const SIG = { buy: { label: 'ðŸŸ¢ Compra', cls: 'signal-buy' }, neutral: { label: 'ðŸŸ¡ Neutro', cls: 'signal-neutral' }, wait: { label: 'ðŸ”´ Aguardar', cls: 'signal-wait' } }
 
 export default function Investments() {
   const [invData, setInvData]   = useState(null)
@@ -21,15 +21,15 @@ export default function Investments() {
   const [profile, setProfile]   = useState('moderado')
 
   useEffect(() => {
-    axios.get('/api/investments').then(r => { setInvData(r.data); setProfile(r.data.profile?.toLowerCase() === 'conservador' ? 'conservador' : r.data.profile?.toLowerCase() === 'agressivo' ? 'agressivo' : 'moderado'); setLoadInv(false) }).catch(() => setLoadInv(false))
-    axios.get('/api/market').then(r => { setMarket(r.data); setLoadMkt(false) }).catch(() => setLoadMkt(false))
+    api.get('/api/investments').then(r => { setInvData(r.data); setProfile(r.data.profile?.toLowerCase() === 'conservador' ? 'conservador' : r.data.profile?.toLowerCase() === 'agressivo' ? 'agressivo' : 'moderado'); setLoadInv(false) }).catch(() => setLoadInv(false))
+    api.get('/api/market').then(r => { setMarket(r.data); setLoadMkt(false) }).catch(() => setLoadMkt(false))
   }, [])
 
   const changeProfile = async (p) => {
     setProfile(p)
-    const s = await axios.get('/api/settings').catch(() => ({ data: {} }))
-    await axios.put('/api/settings', { ...s.data, investor_profile: p }).catch(() => {})
-    const r = await axios.get('/api/investments').catch(() => ({ data: invData }))
+    const s = await api.get('/api/settings').catch(() => ({ data: {} }))
+    await api.put('/api/settings', { ...s.data, investor_profile: p }).catch(() => {})
+    const r = await api.get('/api/investments').catch(() => ({ data: invData }))
     setInvData(r.data)
   }
 
@@ -40,8 +40,8 @@ export default function Investments() {
   return (
     <div>
       <div className="page-header">
-        <h1>🌱 Investimentos</h1>
-        <p>Plano de alocação personalizado e acompanhamento de mercado B3</p>
+        <h1>ðŸŒ± Investimentos</h1>
+        <p>Plano de alocaÃ§Ã£o personalizado e acompanhamento de mercado B3</p>
       </div>
 
       {/* Profile Selector */}
@@ -61,11 +61,11 @@ export default function Investments() {
       {/* Allocation + Pie */}
       <div className="charts-grid" style={{ marginBottom: 16 }}>
         <div className="chart-card">
-          <div className="chart-title">📐 Alocação Sugerida</div>
+          <div className="chart-title">ðŸ“ AlocaÃ§Ã£o Sugerida</div>
           {loadInv ? <div className="loading"><div className="spinner" /></div> : invData ? (
             <>
               <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-muted)' }}>
-                💰 Valor disponível para investir: <strong style={{ color: 'var(--accent)' }}>{fmt(invData.investment_suggested)}</strong>
+                ðŸ’° Valor disponÃ­vel para investir: <strong style={{ color: 'var(--accent)' }}>{fmt(invData.investment_suggested)}</strong>
               </div>
               <div className="alloc-grid">
                 {invData.breakdown?.map(b => (
@@ -86,7 +86,7 @@ export default function Investments() {
         </div>
 
         <div className="chart-card">
-          <div className="chart-title">🍕 Gráfico de Alocação</div>
+          <div className="chart-title">ðŸ• GrÃ¡fico de AlocaÃ§Ã£o</div>
           {invData?.breakdown ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -104,9 +104,9 @@ export default function Investments() {
       <div className="chart-card" style={{ marginBottom: 16 }}>
         <div className="emergency-bar">
           <div className="emergency-header">
-            <h4>🏦 Reserva de Emergência</h4>
+            <h4>ðŸ¦ Reserva de EmergÃªncia</h4>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Meta: {fmt(invData?.emergency_goal || 0)} • Recomendação: Tesouro Selic ou CDB liquidez diária
+              Meta: {fmt(invData?.emergency_goal || 0)} â€¢ RecomendaÃ§Ã£o: Tesouro Selic ou CDB liquidez diÃ¡ria
             </span>
           </div>
           <div className="progress-thin">
@@ -118,12 +118,12 @@ export default function Investments() {
 
       {/* Market Tabs */}
       <div className="chart-card">
-        <div className="chart-title">📡 Mercado ao Vivo (B3)</div>
+        <div className="chart-title">ðŸ“¡ Mercado ao Vivo (B3)</div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          {[['acoes','📈 Ações Barsi'],['fiis','🏢 FIIs']].map(([k,l]) => (
+          {[['acoes','ðŸ“ˆ AÃ§Ãµes Barsi'],['fiis','ðŸ¢ FIIs']].map(([k,l]) => (
             <button key={k} className={`btn ${activeTab===k?'btn-primary':'btn-secondary'} btn-sm`} onClick={() => setActiveTab(k)}>{l}</button>
           ))}
-          {loadMkt && <span className="text-muted text-sm">⏳ Carregando cotações...</span>}
+          {loadMkt && <span className="text-muted text-sm">â³ Carregando cotaÃ§Ãµes...</span>}
         </div>
 
         {loadMkt ? (
@@ -134,30 +134,31 @@ export default function Investments() {
               <div key={s.ticker} className="stock-card">
                 <div className="flex-between">
                   <div><div className="stock-ticker">{s.ticker}</div><div className="stock-name">{s.name}</div></div>
-                  <span className={SIG[s.signal]?.cls || ''}>{SIG[s.signal]?.label || '—'}</span>
+                  <span className={SIG[s.signal]?.cls || ''}>{SIG[s.signal]?.label || 'â€”'}</span>
                 </div>
                 <div className="stock-price" style={{ color: s.price ? 'var(--text)' : 'var(--text-muted)' }}>
-                  {s.price ? `R$ ${Number(s.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—'}
+                  {s.price ? `R$ ${Number(s.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'â€”'}
                 </div>
                 {s.change_pct !== null && (
                   <div className={`stock-change ${s.change_pct >= 0 ? 'positive' : 'negative'}`}>
-                    {s.change_pct >= 0 ? '▲' : '▼'} {Math.abs(s.change_pct).toFixed(2)}%
+                    {s.change_pct >= 0 ? 'â–²' : 'â–¼'} {Math.abs(s.change_pct).toFixed(2)}%
                   </div>
                 )}
                 <div className="stock-meta">
-                  <div className="stock-meta-item">DY: <strong>{s.dy ? s.dy + '%' : '—'}</strong></div>
-                  <div className="stock-meta-item">P/VP: <strong>{s.pvp || '—'}</strong></div>
+                  <div className="stock-meta-item">DY: <strong>{s.dy ? s.dy + '%' : 'â€”'}</strong></div>
+                  <div className="stock-meta-item">P/VP: <strong>{s.pvp || 'â€”'}</strong></div>
                   <div className="stock-meta-item">{activeTab === 'acoes' ? s.sector : s.segment}</div>
                 </div>
-                {s.error && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>⚠️ Dados indisponíveis</div>}
+                {s.error && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>âš ï¸ Dados indisponÃ­veis</div>}
               </div>
             ))}
           </div>
         )}
         <div style={{ marginTop: 14, fontSize: 11, color: 'var(--text-muted)' }}>
-          🟢 Compra = DY &gt; 6% e P/VP &lt; 2 (critérios Barsi) &nbsp;|&nbsp; Dados: Yahoo Finance (yfinance) &nbsp;|&nbsp; Atualização: ao carregar a página
+          ðŸŸ¢ Compra = DY &gt; 6% e P/VP &lt; 2 (critÃ©rios Barsi) &nbsp;|&nbsp; Dados: Yahoo Finance (yfinance) &nbsp;|&nbsp; AtualizaÃ§Ã£o: ao carregar a pÃ¡gina
         </div>
       </div>
     </div>
   )
 }
+

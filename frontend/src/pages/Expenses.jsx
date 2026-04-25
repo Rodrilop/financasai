@@ -1,13 +1,13 @@
-import { useEffect, useState, useCallback } from 'react'
-import axios from 'axios'
+﻿import { useEffect, useState, useCallback } from 'react'
+import api from '../api/client'
 import Modal from '../components/Modal'
 
-const CATEGORIES = ['Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Assinaturas','Vestuário','Pets','Outros']
+const CATEGORIES = ['Moradia','AlimentaÃ§Ã£o','Transporte','SaÃºde','EducaÃ§Ã£o','Lazer','Assinaturas','VestuÃ¡rio','Pets','Outros']
 const PRIORITIES = ['Essencial','Importante','Opcional']
 
 function fmt(v) { return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
 
-const EMPTY_FORM = { description: '', amount: '', category: 'Alimentação', priority: 'Essencial', date: new Date().toISOString().slice(0,10), notes: '' }
+const EMPTY_FORM = { description: '', amount: '', category: 'AlimentaÃ§Ã£o', priority: 'Essencial', date: new Date().toISOString().slice(0,10), notes: '' }
 
 export default function Expenses() {
   const [expenses, setExpenses] = useState([])
@@ -22,32 +22,32 @@ export default function Expenses() {
   const load = useCallback(() => {
     const p = { ...filters }
     Object.keys(p).forEach(k => !p[k] && delete p[k])
-    axios.get('/api/expenses', { params: p }).then(r => { setExpenses(r.data); setLoading(false) }).catch(() => setLoading(false))
+    api.get('/api/expenses', { params: p }).then(r => { setExpenses(r.data); setLoading(false) }).catch(() => setLoading(false))
   }, [filters])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { axios.get('/api/settings').then(r => setSettings(r.data)).catch(() => {}) }, [])
+  useEffect(() => { api.get('/api/settings').then(r => setSettings(r.data)).catch(() => {}) }, [])
 
   const openAdd = () => { setForm({...EMPTY_FORM, date: new Date().toISOString().slice(0,10)}); setEditId(null); setModal('form') }
   const openEdit = (e) => { setForm({ description:e.description, amount:String(e.amount), category:e.category, priority:e.priority, date:e.date, notes:e.notes||'' }); setEditId(e.id); setModal('form') }
   
   const save = async () => {
     const body = { ...form, amount: parseFloat(form.amount) || 0 }
-    if (!body.description || !body.amount) return alert('Preencha descrição e valor.')
-    if (editId) await axios.put(`/api/expenses/${editId}`, body)
-    else await axios.post('/api/expenses', body)
+    if (!body.description || !body.amount) return alert('Preencha descriÃ§Ã£o e valor.')
+    if (editId) await api.put(`/api/expenses/${editId}`, body)
+    else await api.post('/api/expenses', body)
     setModal(null); load()
   }
 
   const remove = async (id) => {
     if (!confirm('Excluir esta despesa?')) return
-    await axios.delete(`/api/expenses/${id}`)
+    await api.delete(`/api/expenses/${id}`)
     load()
   }
 
   const bulkDelete = async () => {
     if (!selected.length || !confirm(`Excluir ${selected.length} despesas?`)) return
-    await axios.post('/api/expenses/bulk-delete', { ids: selected })
+    await api.post('/api/expenses/bulk-delete', { ids: selected })
     setSelected([]); load()
   }
 
@@ -59,13 +59,13 @@ export default function Expenses() {
   return (
     <div>
       <div className="page-header">
-        <h1>🧾 Despesas</h1>
+        <h1>ðŸ§¾ Despesas</h1>
         <p>Gerencie todos os seus gastos de forma categorizada</p>
       </div>
 
       <div className="filters-bar">
         <div className="search-box">
-          <span className="search-icon">🔍</span>
+          <span className="search-icon">ðŸ”</span>
           <input placeholder="Buscar despesa..." value={filters.q} onChange={e => setFilters(f => ({...f, q: e.target.value}))} />
         </div>
         <select className="filter-select" value={filters.category} onChange={e => setFilters(f => ({...f, category: e.target.value}))}>
@@ -78,22 +78,22 @@ export default function Expenses() {
         </select>
         <input type="month" className="filter-select" value={filters.month} onChange={e => setFilters(f => ({...f, month: e.target.value}))} style={{ colorScheme: 'dark' }} />
         <button className="btn btn-primary" onClick={openAdd}>+ Adicionar</button>
-        {selected.length > 0 && <button className="btn btn-danger btn-sm" onClick={bulkDelete}>🗑️ Excluir {selected.length}</button>}
+        {selected.length > 0 && <button className="btn btn-danger btn-sm" onClick={bulkDelete}>ðŸ—‘ï¸ Excluir {selected.length}</button>}
       </div>
 
       <div className="table-card">
         <div className="table-header">
-          <h3>{expenses.length} despesas — Total: <span className="text-accent">{fmt(total)}</span></h3>
+          <h3>{expenses.length} despesas â€” Total: <span className="text-accent">{fmt(total)}</span></h3>
         </div>
         {loading ? <div className="loading"><div className="spinner" /></div> : expenses.length === 0 ? (
-          <div className="empty"><div className="icon">📭</div><p>Nenhuma despesa encontrada.</p></div>
+          <div className="empty"><div className="icon">ðŸ“­</div><p>Nenhuma despesa encontrada.</p></div>
         ) : (
           <table>
             <thead>
               <tr>
                 <th><input type="checkbox" onChange={toggleAll} checked={selected.length === expenses.length && expenses.length > 0} /></th>
-                <th>Descrição</th><th>Categoria</th><th>Prioridade</th><th>Data</th>
-                <th style={{textAlign:'right'}}>Valor</th><th>Ações</th>
+                <th>DescriÃ§Ã£o</th><th>Categoria</th><th>Prioridade</th><th>Data</th>
+                <th style={{textAlign:'right'}}>Valor</th><th>AÃ§Ãµes</th>
               </tr>
             </thead>
             <tbody>
@@ -107,8 +107,8 @@ export default function Expenses() {
                   <td style={{textAlign:'right', fontWeight:600, color:'var(--text)'}}>{fmt(e.amount)}</td>
                   <td>
                     <div style={{display:'flex',gap:6}}>
-                      <button className="btn-icon" onClick={() => openEdit(e)} title="Editar">✏️</button>
-                      <button className="btn-icon" onClick={() => remove(e.id)} title="Excluir">🗑️</button>
+                      <button className="btn-icon" onClick={() => openEdit(e)} title="Editar">âœï¸</button>
+                      <button className="btn-icon" onClick={() => remove(e.id)} title="Excluir">ðŸ—‘ï¸</button>
                     </div>
                   </td>
                 </tr>
@@ -119,11 +119,11 @@ export default function Expenses() {
       </div>
 
       {modal === 'form' && (
-        <Modal title={editId ? '✏️ Editar Despesa' : '+ Nova Despesa'} onClose={() => setModal(null)}
+        <Modal title={editId ? 'âœï¸ Editar Despesa' : '+ Nova Despesa'} onClose={() => setModal(null)}
           footer={<><button className="btn btn-secondary" onClick={() => setModal(null)}>Cancelar</button><button className="btn btn-primary" onClick={save}>Salvar</button></>}>
           <div className="form-grid">
             <div className="form-group" style={{gridColumn:'1/-1'}}>
-              <label>Descrição *</label>
+              <label>DescriÃ§Ã£o *</label>
               <input className="form-control" value={form.description} onChange={e => setForm(f=>({...f,description:e.target.value}))} placeholder="Ex: Supermercado" />
             </div>
             <div className="form-group">
@@ -147,7 +147,7 @@ export default function Expenses() {
               </select>
             </div>
             <div className="form-group" style={{gridColumn:'1/-1'}}>
-              <label>Observações</label>
+              <label>ObservaÃ§Ãµes</label>
               <textarea className="form-control" value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} placeholder="Opcional..." />
             </div>
           </div>
@@ -156,3 +156,4 @@ export default function Expenses() {
     </div>
   )
 }
+
