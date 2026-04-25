@@ -8,6 +8,7 @@ TURSO_DB_URL = os.getenv("TURSO_DATABASE_URL", "")
 TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "")
 
 def get_connection():
+    """Establish and return a connection to the Turso or local SQLite database."""
     if TURSO_DB_URL:
         try:
             import libsql_experimental as libsql
@@ -23,6 +24,7 @@ def get_connection():
     return conn
 
 def init_db():
+    """Initialize the database by creating all required tables and default settings."""
     conn = get_connection()
     c = conn.cursor()
     

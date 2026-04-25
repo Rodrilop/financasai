@@ -13,3 +13,5 @@ slowapi
 libsql-experimental
 passlib[bcrypt]
 pyjwt
+python-json-logger
+alembic

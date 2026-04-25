@@ -6,6 +6,15 @@ from typing import Optional, List
 from datetime import datetime
 import os
 import logging
+from pythonjsonlogger import jsonlogger
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logHandler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+logHandler.setFormatter(formatter)
+logger.addHandler(logHandler)
+
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -28,6 +37,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"],
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    """Catch all exceptions globally and log them in JSON format."""
     logging.error(f"Global Error: {exc}")
     return JSONResponse(status_code=500, content={"detail": "Erro interno no servidor."})
 
@@ -106,10 +116,13 @@ def login(user: UserLogin):
 
 @app.get("/api/settings")
 def read_settings(user: str = Depends(get_current_user)):
+    """Return user settings and configuration parameters."""
     return get_settings()
 
 @app.put("/api/settings")
 def update_settings(data: SettingsIn, user: str = Depends(get_current_user)):
+    """Update user settings in the database."""
+    logger.info("Updating settings", extra={"user": user})
     conn = get_connection()
     conn.execute("""UPDATE settings SET salary=?,reference_month=?,emergency_reserve_goal=?,
                     investment_pct=?,investor_profile=?,budget_essential_pct=?,
@@ -128,6 +141,8 @@ def read_income(user: str = Depends(get_current_user)):
 
 @app.post("/api/income", status_code=201)
 def add_income(data: IncomeIn, user: str = Depends(get_current_user)):
+    """Add a new income record."""
+    logger.info("Adding income", extra={"user": user, "amount": data.amount})
     conn = get_connection()
     cur = conn.execute("INSERT INTO income (name,amount) VALUES (?,?)", (data.name, data.amount))
     conn.commit()
@@ -147,6 +162,8 @@ def delete_income(income_id: int, user: str = Depends(get_current_user)):
 @app.get("/api/expenses")
 def read_expenses(user: str = Depends(get_current_user), month: Optional[str] = None, category: Optional[str] = None,
                   priority: Optional[str] = None, q: Optional[str] = None):
+    """Read expenses with optional filtering by month, category, priority or search query."""
+                  priority: Optional[str] = None, q: Optional[str] = None):
     conn = get_connection()
     sql = "SELECT * FROM expenses WHERE 1=1"
     params = []
@@ -165,6 +182,8 @@ def read_expenses(user: str = Depends(get_current_user), month: Optional[str] = 
 
 @app.post("/api/expenses", status_code=201)
 def add_expense(data: ExpenseIn, user: str = Depends(get_current_user)):
+    """Add a new expense record."""
+    logger.info("Adding expense", extra={"user": user, "amount": data.amount, "category": data.category})
     conn = get_connection()
     cur = conn.execute(
         "INSERT INTO expenses (description,amount,category,priority,date,notes) VALUES (?,?,?,?,?,?)",

@@ -21,6 +21,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Run Pytest
+        env:
+          JWT_SECRET_KEY: "mock_jwt_secret_for_ci"
+          GEMINI_API_KEY: "mock_gemini_api_key_for_ci"
         run: |
           cd backend
           pytest tests/

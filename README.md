@@ -85,16 +85,22 @@ npm install
 ```
 
 Inicie o servidor de desenvolvimento do Vite:
+### 4. Executando com Docker (Opcional)
+Se preferir, você pode rodar todo o ambiente (Frontend + Backend) com um único comando usando Docker Compose:
 ```bash
-npm run dev
+docker-compose up --build
 ```
-Acesse no seu navegador ou pelo celular (através do seu IP local): `http://localhost:5173/`.
+A aplicação estará disponível em `http://localhost:5173/`.
 
 ---
 
-## 🔒 Segurança de Dados (Production-Ready)
+## 🔒 Segurança e Boas Práticas no GitHub
 
-- **Proteção de Chaves**: O repositório já conta com o arquivo `.gitignore` configurado e tem histórico de Git auditado. Lembre-se de NUNCA dar *commit* ou subir seu arquivo `backend/.env`.
+Para manter o repositório organizado e seguro, recomendamos as seguintes configurações no painel do GitHub:
+- **Branch Protection Rules**: Vá em `Settings > Branches > Add branch protection rule`. Proteja a branch `main` exigindo pull requests e impedindo push direto.
+- **GitHub Releases**: Sempre que finalizar uma grande atualização, vá em `Releases > Draft a new release`, crie uma nova tag (ex: `v1.1.0`) e cole as notas de atualização baseadas no `CHANGELOG.md`.
+
+- **Proteção de Chaves**: O repositório já conta com o arquivo `.gitignore` configurado. Lembre-se de NUNCA subir seu arquivo `backend/.env`.
 - **Autenticação**: Rotas protegidas via JWT (`JSON Web Tokens`).
 - **Validação e Limites**: O backend conta com Rate Limiting (`slowapi`) que evita abusos nos limites de tokens da IA e injeções nos dados usando metadados Pydantic.
 - **CI/CD Pipeline**: GitHub actions configurado para rodar `pytest` e `vitest` em todo commit que for enviado para o repositório principal.
