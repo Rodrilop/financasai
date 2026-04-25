@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+python-dotenv
+python-multipart
+pydantic
+pandas
+yfinance
+google-generativeai
