@@ -51,9 +51,10 @@ Seja direto, use linguagem simples e mencione valores reais quando relevante. M�
     except Exception as e:
         return f"⚠️ IA temporariamente indisponível. Veja os alertas automáticos abaixo.\n\nErro: {str(e)}"
 
-def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str = None) -> str:
-    """Answer user questions and execute financial actions (Agent), supporting images."""
+def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str = None, audio_base64: str = None) -> str:
+    """Answer user questions and execute financial actions (Agent), supporting images and audio."""
     try:
+        # ... (ferramentas omitidas para brevidade na visualização, mas permanecem no arquivo)
         def add_expense_tool(description: str, amount: float, category: str, priority: str, date: str) -> dict:
             """Adiciona uma nova despesa no sistema do usuário. Use esta ferramenta APENAS quando o usuário disser que gastou/comprou algo ou enviou um cupom fiscal.
             
@@ -230,6 +231,18 @@ O usuário diz: {question}"""
             image_bytes = base64.b64decode(b64_data)
             message_content.append({"mime_type": mime_type, "data": image_bytes})
             message_content.append("O usuário anexou esta imagem. Se for um cupom fiscal ou recibo, leia-o, extraia o valor TOTAL pago, a data e a descrição (ex: 'Compras Atacadão') e USE a ferramenta add_expense_tool para salvá-lo imediatamente.")
+
+        if audio_base64:
+            # Parse audio base64 (usually data:audio/webm;base64,...)
+            audio_mime = "audio/webm"
+            audio_data = audio_base64
+            if "data:" in audio_base64 and ";base64," in audio_base64:
+                header, audio_data = audio_base64.split(";base64,")
+                audio_mime = header.split(":")[1]
+            
+            audio_bytes = base64.b64decode(audio_data)
+            message_content.append({"mime_type": audio_mime, "data": audio_bytes})
+            message_content.append("O usuário enviou uma mensagem de VOZ acima. Ouça o áudio, entenda o pedido dele e execute as ações necessárias usando suas ferramentas. Responda em texto confirmando o que foi feito.")
 
         response = chat.send_message(message_content)
         return response.text

@@ -90,6 +90,7 @@ class ChatIn(BaseModel):
     question: str = Field(..., min_length=1)
     month: Optional[str] = None
     image_base64: Optional[str] = None
+    audio_base64: Optional[str] = None
 
 class UserRegister(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -282,7 +283,7 @@ def recommendations(request: Request, month: Optional[str] = None, user: dict = 
 @app.post("/api/chat")
 def chat(request: Request, data: ChatIn, user: dict = Depends(get_current_user)):
     analysis_data = compute_analysis(user["id"], data.month)
-    answer = chat_with_ai(data.question, analysis_data, user["id"], data.image_base64)
+    answer = chat_with_ai(data.question, analysis_data, user["id"], data.image_base64, data.audio_base64)
     return {"answer": answer}
 
 # ── Market & Investments ──────────────────────────────────────────────────────

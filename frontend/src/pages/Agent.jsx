@@ -11,51 +11,60 @@ export default function Agent() {
   const [input, setInput] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
   const endRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Voice Recognition Logic
-  const startListening = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Seu navegador não suporta reconhecimento de voz.");
-      return;
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => {
+          const base64Audio = reader.result;
+          sendAudioMessage(base64Audio);
+        };
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao acessar microfone. Verifique as permissões do seu navegador.");
     }
+  };
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'pt-BR';
-    recognition.interimResults = false;
+  const stopRecording = () => {
+    if (mediaRecorder) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+    }
+  };
 
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    
-    recognition.onerror = (event) => {
-      console.error('Speech Recognition Error', event.error);
-      setIsListening(false);
-      if (event.error === 'not-allowed') {
-        alert("Acesso ao microfone negado. Por favor, permita o acesso nas configurações do seu navegador.");
-      } else if (event.error === 'no-speech') {
-        // Just stop quietly if no speech detected
-      } else {
-        alert("Erro no reconhecimento de voz: " + event.error);
-      }
-    };
-
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      setInput(transcript);
-      // Auto-send after a small delay to let user see the text
-      setTimeout(() => {
-        sendMessage(transcript);
-      }, 800);
-    };
+  const sendAudioMessage = async (base64Audio) => {
+    const newMsgs = [...messages, { role: 'user', content: '[Mensagem de Voz 🎙️]' }];
+    setMessages(newMsgs);
+    setLoading(true);
 
     try {
-      recognition.start();
-    } catch (e) {
-      console.error(e);
-      setIsListening(false);
+      const res = await api.post('/api/chat', { 
+        question: "O usuário enviou um áudio.", 
+        audio_base64: base64Audio 
+      });
+      setMessages([...newMsgs, { role: 'assistant', content: res.data.answer }]);
+    } catch (err) {
+      setMessages([...newMsgs, { role: 'assistant', content: 'Erro ao processar áudio. Tente novamente.' }]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -202,13 +211,22 @@ export default function Agent() {
           </button>
 
           <button 
-            className={`btn ${isListening ? 'btn-danger pulse' : 'btn-secondary'}`} 
-            style={{ borderRadius: '24px', padding: '0 16px', fontSize: 20, transition: 'all 0.3s' }} 
-            onClick={startListening}
-            title="Comando de Voz"
+            className={`btn ${isRecording ? 'btn-danger pulse' : 'btn-secondary'}`} 
+            style={{ 
+                borderRadius: '24px', 
+                padding: '0 16px', 
+                fontSize: 20, 
+                transition: 'all 0.3s',
+                boxShadow: isRecording ? '0 0 15px var(--danger)' : 'none'
+            }} 
+            onMouseDown={startRecording}
+            onMouseUp={stopRecording}
+            onTouchStart={startRecording}
+            onTouchEnd={stopRecording}
+            title="Segure para falar"
             disabled={loading}
           >
-            {isListening ? '🛑' : '🎙️'}
+            {isRecording ? '🛑' : '🎙️'}
           </button>
           
           <input 
