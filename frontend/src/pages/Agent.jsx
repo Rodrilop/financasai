@@ -30,16 +30,33 @@ export default function Agent() {
     recognition.onstart = () => setIsListening(true);
     recognition.onend = () => setIsListening(false);
     
+    recognition.onerror = (event) => {
+      console.error('Speech Recognition Error', event.error);
+      setIsListening(false);
+      if (event.error === 'not-allowed') {
+        alert("Acesso ao microfone negado. Por favor, permita o acesso nas configurações do seu navegador.");
+      } else if (event.error === 'no-speech') {
+        // Just stop quietly if no speech detected
+      } else {
+        alert("Erro no reconhecimento de voz: " + event.error);
+      }
+    };
+
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       setInput(transcript);
       // Auto-send after a small delay to let user see the text
       setTimeout(() => {
         sendMessage(transcript);
-      }, 500);
+      }, 800);
     };
 
-    recognition.start();
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error(e);
+      setIsListening(false);
+    }
   };
 
   useEffect(() => {

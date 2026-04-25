@@ -6,7 +6,7 @@ load_dotenv(override=True)
 
 # Configurar o client do Google Gemini
 genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
-model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 def generate_recommendations(analysis: dict) -> str:
     """Use Google Gemini to generate personalized financial recommendations."""
