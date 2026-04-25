@@ -6,3 +6,10 @@ pydantic
 pandas
 yfinance
 google-generativeai
+pytest
+pytest-asyncio
+httpx
+slowapi
+libsql-experimental
+passlib[bcrypt]
+pyjwt

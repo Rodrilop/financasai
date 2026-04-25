@@ -1,19 +1,35 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 import os
+import logging
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from database import get_connection, init_db
 from analyzer import compute_analysis, get_settings, get_all_income
 from market import get_market_data, get_allocation
 from ai_engine import generate_recommendations, chat_with_ai
+from auth import get_password_hash, verify_password, create_access_token, get_current_user
+
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="FinançasAI API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logging.error(f"Global Error: {exc}")
+    return JSONResponse(status_code=500, content={"detail": "Erro interno no servidor."})
 
 @app.on_event("startup")
 def startup():
@@ -22,42 +38,78 @@ def startup():
 # ── Models ──────────────────────────────────────────────────────────────────
 
 class SettingsIn(BaseModel):
-    salary: float = 0
-    reference_month: str = ""
-    emergency_reserve_goal: float = 0
-    investment_pct: float = 20
-    investor_profile: str = "moderado"
-    budget_essential_pct: float = 50
-    budget_important_pct: float = 30
-    budget_optional_pct: float = 20
+    salary: float = Field(0, ge=0)
+    reference_month: str = Field("", max_length=7)
+    emergency_reserve_goal: float = Field(0, ge=0)
+    investment_pct: float = Field(20, ge=0, le=100)
+    investor_profile: str = Field("moderado", max_length=20)
+    budget_essential_pct: float = Field(50, ge=0, le=100)
+    budget_important_pct: float = Field(30, ge=0, le=100)
+    budget_optional_pct: float = Field(20, ge=0, le=100)
 
 class IncomeIn(BaseModel):
-    name: str
-    amount: float
+    name: str = Field(..., min_length=1, max_length=100)
+    amount: float = Field(..., gt=0)
 
 class ExpenseIn(BaseModel):
-    description: str
-    amount: float
-    category: str
-    priority: str
-    date: str
-    notes: Optional[str] = ""
+    description: str = Field(..., min_length=1, max_length=255)
+    amount: float = Field(..., gt=0)
+    category: str = Field(..., min_length=1, max_length=50)
+    priority: str = Field(..., min_length=1, max_length=20)
+    date: str = Field(..., max_length=10)
+    notes: Optional[str] = Field("", max_length=500)
 
 class BulkDeleteIn(BaseModel):
     ids: List[int]
 
 class ChatIn(BaseModel):
-    question: str
+    question: str = Field(..., min_length=1, max_length=1000)
     month: Optional[str] = None
+
+
+class UserRegister(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    email: str = Field(..., min_length=5, max_length=100)
+    password: str = Field(..., min_length=6, max_length=100)
+
+class UserLogin(BaseModel):
+    email: str = Field(..., min_length=5, max_length=100)
+    password: str = Field(..., min_length=6, max_length=100)
+
+# ── Auth ─────────────────────────────────────────────────────────────────────
+
+@app.post("/api/auth/register")
+def register(user: UserRegister):
+    conn = get_connection()
+    existing = conn.execute("SELECT id FROM users WHERE email=?", (user.email,)).fetchone()
+    if existing:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Email já cadastrado")
+    hashed = get_password_hash(user.password)
+    conn.execute("INSERT INTO users (name, email, hashed_password) VALUES (?, ?, ?)",
+                       (user.name, user.email, hashed))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+@app.post("/api/auth/login")
+def login(user: UserLogin):
+    conn = get_connection()
+    db_user = conn.execute("SELECT * FROM users WHERE email=?", (user.email,)).fetchone()
+    conn.close()
+    if not db_user or not verify_password(user.password, db_user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Email ou senha incorretos")
+    access_token = create_access_token(data={"sub": db_user["email"]})
+    return {"access_token": access_token, "token_type": "bearer", "name": db_user["name"]}
 
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/settings")
-def read_settings():
+def read_settings(user: str = Depends(get_current_user)):
     return get_settings()
 
 @app.put("/api/settings")
-def update_settings(data: SettingsIn):
+def update_settings(data: SettingsIn, user: str = Depends(get_current_user)):
     conn = get_connection()
     conn.execute("""UPDATE settings SET salary=?,reference_month=?,emergency_reserve_goal=?,
                     investment_pct=?,investor_profile=?,budget_essential_pct=?,
@@ -71,11 +123,11 @@ def update_settings(data: SettingsIn):
 # ── Income ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/income")
-def read_income():
+def read_income(user: str = Depends(get_current_user)):
     return get_all_income()
 
 @app.post("/api/income", status_code=201)
-def add_income(data: IncomeIn):
+def add_income(data: IncomeIn, user: str = Depends(get_current_user)):
     conn = get_connection()
     cur = conn.execute("INSERT INTO income (name,amount) VALUES (?,?)", (data.name, data.amount))
     conn.commit()
@@ -84,7 +136,7 @@ def add_income(data: IncomeIn):
     return {"id": new_id, **data.dict()}
 
 @app.delete("/api/income/{income_id}")
-def delete_income(income_id: int):
+def delete_income(income_id: int, user: str = Depends(get_current_user)):
     conn = get_connection()
     conn.execute("DELETE FROM income WHERE id=?", (income_id,))
     conn.commit(); conn.close()
@@ -93,7 +145,7 @@ def delete_income(income_id: int):
 # ── Expenses ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/expenses")
-def read_expenses(month: Optional[str] = None, category: Optional[str] = None,
+def read_expenses(user: str = Depends(get_current_user), month: Optional[str] = None, category: Optional[str] = None,
                   priority: Optional[str] = None, q: Optional[str] = None):
     conn = get_connection()
     sql = "SELECT * FROM expenses WHERE 1=1"
@@ -112,7 +164,7 @@ def read_expenses(month: Optional[str] = None, category: Optional[str] = None,
     return [dict(r) for r in rows]
 
 @app.post("/api/expenses", status_code=201)
-def add_expense(data: ExpenseIn):
+def add_expense(data: ExpenseIn, user: str = Depends(get_current_user)):
     conn = get_connection()
     cur = conn.execute(
         "INSERT INTO expenses (description,amount,category,priority,date,notes) VALUES (?,?,?,?,?,?)",
@@ -124,7 +176,7 @@ def add_expense(data: ExpenseIn):
     return {"id": new_id, **data.dict()}
 
 @app.put("/api/expenses/{expense_id}")
-def update_expense(expense_id: int, data: ExpenseIn):
+def update_expense(expense_id: int, data: ExpenseIn, user: str = Depends(get_current_user)):
     conn = get_connection()
     conn.execute(
         "UPDATE expenses SET description=?,amount=?,category=?,priority=?,date=?,notes=? WHERE id=?",
@@ -134,14 +186,14 @@ def update_expense(expense_id: int, data: ExpenseIn):
     return {"id": expense_id, **data.dict()}
 
 @app.delete("/api/expenses/{expense_id}")
-def delete_expense(expense_id: int):
+def delete_expense(expense_id: int, user: str = Depends(get_current_user)):
     conn = get_connection()
     conn.execute("DELETE FROM expenses WHERE id=?", (expense_id,))
     conn.commit(); conn.close()
     return {"ok": True}
 
 @app.post("/api/expenses/bulk-delete")
-def bulk_delete(data: BulkDeleteIn):
+def bulk_delete(data: BulkDeleteIn, user: str = Depends(get_current_user)):
     conn = get_connection()
     conn.execute(f"DELETE FROM expenses WHERE id IN ({','.join('?'*len(data.ids))})", data.ids)
     conn.commit(); conn.close()
@@ -150,17 +202,19 @@ def bulk_delete(data: BulkDeleteIn):
 # ── Analysis ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/analysis")
-def analysis(month: Optional[str] = None):
+def analysis(user: str = Depends(get_current_user), month: Optional[str] = None):
     return compute_analysis(month)
 
 @app.get("/api/analysis/recommendations")
-def recommendations(month: Optional[str] = None):
+@limiter.limit("5/minute")
+def recommendations(request: Request, month: Optional[str] = None, user: str = Depends(get_current_user)):
     data = compute_analysis(month)
     text = generate_recommendations(data)
     return {"text": text}
 
 @app.post("/api/chat")
-def chat(data: ChatIn):
+@limiter.limit("10/minute")
+def chat(request: Request, data: ChatIn, user: str = Depends(get_current_user)):
     analysis = compute_analysis(data.month)
     answer = chat_with_ai(data.question, analysis)
     return {"answer": answer}
@@ -168,11 +222,11 @@ def chat(data: ChatIn):
 # ── Market & Investments ──────────────────────────────────────────────────────
 
 @app.get("/api/market")
-def market():
+def market(user: str = Depends(get_current_user)):
     return get_market_data()
 
 @app.get("/api/investments")
-def investments(month: Optional[str] = None):
+def investments(user: str = Depends(get_current_user), month: Optional[str] = None):
     data = compute_analysis(month)
     profile = data.get("investor_profile", "moderado")
     amount = data.get("investment_suggested", 0)

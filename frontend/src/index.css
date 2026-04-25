@@ -375,6 +375,17 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   .profile-grid { grid-template-columns: 1fr; }
   
   .modal { max-height: 85vh; padding: 20px; }
-  .modal-footer { flex-direction: column; }
   .modal-footer button { width: 100%; }
 }
+
+/* ── Auth ── */
+.auth-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+.auth-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; width: 100%; max-width: 400px; box-shadow: var(--shadow); }
+.auth-card h2 { font-size: 24px; font-weight: 700; color: var(--text); margin-bottom: 8px; text-align: center; }
+.auth-card > p { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; text-align: center; }
+.auth-btn { width: 100%; padding: 12px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; cursor: pointer; transition: var(--transition); margin-top: 8px; }
+.auth-btn:hover { background: var(--accent-dark); }
+.auth-error { background: rgba(239,68,68,0.1); border-left: 3px solid var(--red); color: var(--red); padding: 10px 14px; font-size: 13px; margin-bottom: 16px; border-radius: var(--radius-sm); }
+.auth-links { margin-top: 20px; text-align: center; font-size: 13px; }
+.auth-links a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.auth-links a:hover { text-decoration: underline; }

@@ -1,10 +1,22 @@
 import sqlite3
+import os
 from pathlib import Path
 from datetime import datetime
 
 DB_PATH = Path(__file__).parent / "financasai.db"
+TURSO_DB_URL = os.getenv("TURSO_DATABASE_URL", "")
+TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "")
 
 def get_connection():
+    if TURSO_DB_URL:
+        try:
+            import libsql_experimental as libsql
+            conn = libsql.connect(TURSO_DB_URL, auth_token=TURSO_AUTH_TOKEN)
+            conn.row_factory = sqlite3.Row
+            return conn
+        except ImportError:
+            print("libsql-experimental is not installed. Falling back to local SQLite.")
+            
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -13,6 +25,18 @@ def get_connection():
 def init_db():
     conn = get_connection()
     c = conn.cursor()
+    
+    # Tabela de Usuários (Auth)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            hashed_password TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
     c.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY,
@@ -55,3 +79,4 @@ def init_db():
         )
     conn.commit()
     conn.close()
+

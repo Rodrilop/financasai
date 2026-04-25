@@ -7,6 +7,7 @@ O **FinançasAI** é um assistente financeiro pessoal completo, com um design mo
 ## 🌟 Principais Funcionalidades
 
 - **Gerenciamento de Despesas**: Adicione, edite, categorize e priorize ("Essencial", "Importante", "Opcional") seus gastos mensais. Conta com exclusão em massa e filtros avançados.
+- **Sistema de Autenticação Seguro**: Login e registro com JWT e senhas hasheadas utilizando `bcrypt`.
 - **Análise Inteligente de IA**: Integração nativa com a API do Google Gemini (modelo 2.5-flash) para avaliar a sua saúde financeira, sugerir cortes de despesas reais com base nos seus dados e montar dicas de investimentos baseadas no seu perfil.
 - **Painel de Investimentos**: Recomendações de alocação de carteira (Ações, FIIs, Tesouro Selic, CDBs) baseadas no seu perfil (Conservador, Moderado, Agressivo).
 - **Design Totalmente Responsivo**: Layout premium em "Dark Mode" com navegação inferior (*Bottom Navigation*) quando acessado por dispositivos móveis, garantindo ergonomia nativa para celulares de todas as resoluções.
@@ -19,14 +20,15 @@ O **FinançasAI** é um assistente financeiro pessoal completo, com um design mo
 ### Backend
 - **[Python 3](https://www.python.org/)**
 - **[FastAPI](https://fastapi.tiangolo.com/)**: Construção da API super-rápida.
-- **[SQLite](https://sqlite.org/)**: Banco de dados relacional leve e local.
+- **[Turso / libSQL](https://turso.tech/)**: Banco de dados Edge-Cloud escalável (com fallback local SQLite).
 - **[Google Generative AI](https://aistudio.google.com/)**: Integração com o Google Gemini.
+- **Pytest**: Suíte de testes automatizados do backend.
 
 ### Frontend
 - **[React 18](https://react.dev/)** + **[Vite](https://vitejs.dev/)**: Framework rápido de desenvolvimento UI.
-- **React Router DOM**: Navegação e roteamento.
+- **React Router DOM**: Navegação, roteamento e rotas privadas protegidas por AuthContext.
 - **Recharts**: Criação de gráficos financeiros interativos.
-- **Vanilla CSS**: Estilização altamente customizada e totalmente responsiva.
+- **Vitest**: Testes unitários do frontend.
 
 ---
 
@@ -56,10 +58,13 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Crie um arquivo `.env` na pasta `backend` com a sua chave da API do Google Gemini:
+Crie um arquivo `.env` na pasta `backend` com as suas chaves:
 ```env
-GEMINI_API_KEY=sua_chave_aqui
+GEMINI_API_KEY=sua_chave_gemini_aqui
 GEMINI_MODEL=gemini-2.5-flash
+JWT_SECRET_KEY=uma_chave_secreta_forte_aqui
+TURSO_DATABASE_URL= # (opcional) sua_url_turso_aqui
+TURSO_AUTH_TOKEN= # (opcional) seu_token_turso_aqui
 ```
 
 Inicie o servidor local do FastAPI:
@@ -87,10 +92,12 @@ Acesse no seu navegador ou pelo celular (através do seu IP local): `http://loca
 
 ---
 
-## 🔒 Segurança de Dados
+## 🔒 Segurança de Dados (Production-Ready)
 
-- **Proteção da Chave da API**: O repositório já conta com o arquivo `.gitignore` configurado. Lembre-se de NUNCA dar *commit* ou subir seu arquivo `backend/.env` para o GitHub público, pois ele contém sua chave do Gemini.
-- **Privacidade do Banco de Dados**: Seus gastos e informações ficam armazenados localmente no arquivo `financasai.db`, garantindo que apenas você (e o seu próprio computador) tenha os dados da sua vida financeira.
+- **Proteção de Chaves**: O repositório já conta com o arquivo `.gitignore` configurado e tem histórico de Git auditado. Lembre-se de NUNCA dar *commit* ou subir seu arquivo `backend/.env`.
+- **Autenticação**: Rotas protegidas via JWT (`JSON Web Tokens`).
+- **Validação e Limites**: O backend conta com Rate Limiting (`slowapi`) que evita abusos nos limites de tokens da IA e injeções nos dados usando metadados Pydantic.
+- **CI/CD Pipeline**: GitHub actions configurado para rodar `pytest` e `vitest` em todo commit que for enviado para o repositório principal.
 
 ---
 
