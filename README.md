@@ -195,9 +195,13 @@ Stack 100% gratuito para projetos pessoais:
 ### Passo 1 — Banco de dados (Turso)
 
 1. Crie uma conta em [turso.tech](https://turso.tech)
-2. Instale a CLI: `npm install -g @turso/cli`
-3. Faça login: `turso auth login`
-4. Crie o banco: `turso db create financasai`
+2. Instale a CLI no PowerShell: 
+   ```powershell
+   powershell -ExecutionPolicy Bypass -c "irm https://github.com/tursodatabase/turso/releases/latest/download/turso_cli-installer.ps1 | iex"
+   ```
+3. Feche e abra o terminal novamente para aplicar o comando.
+4. Faça login: `turso auth login`
+5. Crie o banco: `turso db create financasai`
 5. Obtenha as credenciais:
    ```bash
    turso db show financasai --url   # → TURSO_DATABASE_URL
