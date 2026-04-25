@@ -11,11 +11,11 @@ import Register from './pages/Register'
 import { AuthProvider, AuthContext } from './contexts/AuthContext'
 
 const NAV = [
-  { to: '/',            icon: '🏠', label: 'Dashboard' },
-  { to: '/expenses',    icon: '🧾', label: 'Despesas' },
-  { to: '/analysis',    icon: '📊', label: 'Análise' },
+  { to: '/',            icon: '📊', label: 'Dashboard' },
+  { to: '/expenses',    icon: '📋', label: 'Despesas' },
+  { to: '/analysis',   icon: '📈', label: 'Análise' },
   { to: '/investments', icon: '🌱', label: 'Investimentos' },
-  { to: '/settings',    icon: '⚙️', label: 'Configurações' },
+  { to: '/settings',   icon: '⚙️', label: 'Configurações' },
 ]
 
 function Sidebar({ month }) {
@@ -38,6 +38,7 @@ function Sidebar({ month }) {
       </nav>
       <div className="sidebar-footer">
         <div className="sidebar-month">📅 {month || 'Sem mês definido'}</div>
+        {user && <div className="sidebar-user">👤 {user.name}</div>}
         <button onClick={logout} className="nav-item" style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', marginTop: '1rem', color: '#ff4d4f'}}>
           <span className="icon">🚪</span> Sair
         </button>
@@ -46,49 +47,51 @@ function Sidebar({ month }) {
   )
 }
 
-function ProtectedLayout({ month }) {
+function ProtectedApp() {
   const { user, loading } = useContext(AuthContext);
+  const [month, setMonth] = useState('')
+
+  // Re-fetch settings whenever the logged-in user changes (key dependency: user?.name)
+  useEffect(() => {
+    if (!user) {
+      setMonth('')
+      return
+    }
+    api.get('/api/settings').then(r => {
+      setMonth(r.data.reference_month || '')
+    }).catch(() => {})
+  }, [user])
 
   if (loading) return <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh'}}>Carregando...</div>;
   if (!user) return <Navigate to="/login" replace />;
 
   return (
-    <div className="app-layout">
+    // key={user.name} forces React to fully re-mount all child pages when user switches
+    <div className="app-layout" key={user.name}>
       <div className="mobile-header">
         <span>FinançasAI</span>
       </div>
       <Sidebar month={month} />
       <main className="main-content">
-        <Outlet />
+        <Outlet context={{ setMonth }} />
       </main>
     </div>
   );
 }
 
 export default function App() {
-  const [month, setMonth] = useState('')
-
-  useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    if (token) {
-      api.get('/api/settings').then(r => {
-        setMonth(r.data.reference_month || '')
-      }).catch(() => {})
-    }
-  }, [])
-
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route element={<ProtectedLayout month={month} />}>
+          <Route element={<ProtectedApp />}>
             <Route path="/"            element={<Dashboard />} />
             <Route path="/expenses"    element={<Expenses />} />
             <Route path="/analysis"    element={<Analysis />} />
             <Route path="/investments" element={<Investments />} />
-            <Route path="/settings"    element={<Settings onMonthChange={setMonth} />} />
+            <Route path="/settings"    element={<Settings />} />
           </Route>
         </Routes>
       </BrowserRouter>

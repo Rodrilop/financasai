@@ -3,7 +3,7 @@ import api from '../api/client'
 
 function fmt(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
 
-export default function Settings({ onMonthChange }) {
+export default function Settings() {
   const [settings, setSettings]   = useState(null)
   const [income, setIncome]       = useState([])
   const [newInc, setNewInc]       = useState({ name: '', amount: '' })
@@ -18,7 +18,6 @@ export default function Settings({ onMonthChange }) {
 
   const save = async () => {
     await api.put('/api/settings', settings)
-    onMonthChange?.(settings.reference_month)
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
   }
