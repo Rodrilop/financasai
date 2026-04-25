@@ -412,9 +412,30 @@ async def whatsapp_webhook(request: Request):
             twiml = f"<?xml version='1.0' encoding='UTF-8'?><Response><Message>{answer}</Message></Response>"
             return Response(content=twiml, media_type="application/xml")
         
-        # Para Evolution API, respondemos com um JSON que pode ser usado para confirmação 
-        # ou o backend pode disparar um POST para a API de envio da Evolution
-        return {"reply": answer, "to": remote_jid}
+        # 4. Caso seja Evolution API, precisamos disparar a resposta de volta via API deles
+        evo_url = os.getenv("EVOLUTION_API_URL")
+        evo_key = os.getenv("EVOLUTION_API_KEY")
+        evo_instance = os.getenv("EVOLUTION_INSTANCE_NAME")
+
+        if evo_url and evo_key and evo_instance:
+            import requests
+            send_url = f"{evo_url}/message/sendText/{evo_instance}"
+            payload = {
+                "number": remote_jid,
+                "text": answer,
+                "delay": 1200, # delay natural de digitação em ms
+                "linkPreview": True
+            }
+            headers = {
+                "Content-Type": "application/json",
+                "apikey": evo_key
+            }
+            try:
+                requests.post(send_url, json=payload, headers=headers)
+            except Exception as e:
+                logger.error(f"Erro ao enviar resposta via Evolution: {e}")
+
+        return {"status": "processed", "reply": answer}
 
     except Exception as e:
         logger.error(f"WhatsApp Webhook Error: {e}")
