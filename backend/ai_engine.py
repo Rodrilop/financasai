@@ -150,12 +150,31 @@ def chat_with_ai(question: str, analysis: dict, user_id: int) -> str:
             except Exception as e:
                 return {"status": "error", "message": str(e)}
 
+        def add_portfolio_asset_tool(ticker: str, quantity: float, average_price: float) -> dict:
+            """Adiciona um ativo (Ações, FIIs) à carteira de investimentos do usuário. Ex: PETR4, MXRF11."""
+            from database import get_connection
+            try:
+                conn = get_connection()
+                row = conn.execute("SELECT id, quantity, average_price FROM portfolio WHERE user_id=? AND ticker=?", (user_id, ticker.upper())).fetchone()
+                if row:
+                    new_qty = row["quantity"] + quantity
+                    new_avg = ((row["quantity"] * row["average_price"]) + (quantity * average_price)) / new_qty
+                    conn.execute("UPDATE portfolio SET quantity=?, average_price=? WHERE id=?", (new_qty, new_avg, row["id"]))
+                else:
+                    conn.execute("INSERT INTO portfolio (user_id, ticker, quantity, average_price) VALUES (?,?,?,?)",
+                                 (user_id, ticker.upper(), quantity, average_price))
+                conn.commit()
+                conn.close()
+                return {"status": "success", "message": f"Ativo {ticker.upper()} adicionado à carteira com sucesso."}
+            except Exception as e:
+                return {"status": "error", "message": str(e)}
+
         from datetime import datetime
         hoje = datetime.now().strftime("%Y-%m-%d")
 
         instruction = f"""Você é o Assistente Financeiro IA Pessoal (Consultor Autônomo) do app FinançasAI.
 Hoje é dia {hoje}. Você tem acesso aos dados do usuário e dezenas de ferramentas (tools) para CONTROLE TOTAL do aplicativo.
-SEMPRE que o usuário informar uma intenção (adicionar gasto, mudar salário, adicionar renda extra, alterar perfil, mudar metas), você DEVE obrigatoriamente usar a ferramenta correspondente para executar a ação.
+SEMPRE que o usuário informar uma intenção (adicionar gasto, mudar salário, adicionar renda extra, alterar perfil, mudar metas, comprar ações/ativos), você DEVE obrigatoriamente usar a ferramenta correspondente para executar a ação.
 Não diga "vá nas configurações e mude", FAÇA você mesmo utilizando suas tools.
 Se a data de um gasto não for especificada, ou o usuário usar termos como "hoje" ou "agora", utilize obrigatoriamente a data de hoje ({hoje}).
 Se o usuário pedir para executar mais de uma ação na mesma frase (ex: "mude meu salário para X e adicione uma despesa de Y"), você deve usar AS DUAS ferramentas consecutivamente ou na mesma chamada.
@@ -164,7 +183,8 @@ Após executar as ações, confirme gentilmente o que foi feito. Seja conciso, h
         tools_list = [
             add_expense_tool, update_salary_tool, add_extra_income_tool, 
             update_investment_goal_tool, update_emergency_goal_tool, 
-            update_budget_rules_tool, update_investor_profile_tool
+            update_budget_rules_tool, update_investor_profile_tool,
+            add_portfolio_asset_tool
         ]
 
         model = genai.GenerativeModel(

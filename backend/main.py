@@ -14,7 +14,7 @@ if not logger.handlers:
 
 from database import get_connection, init_db, ensure_user_settings, get_schema_info
 from analyzer import compute_analysis, get_settings, get_all_income
-from market import get_market_data, get_allocation
+from market import get_market_data, get_allocation, get_user_portfolio_data
 from ai_engine import generate_recommendations, chat_with_ai
 from auth import get_password_hash, verify_password, create_access_token, get_current_user
 
@@ -56,6 +56,11 @@ class ExpenseIn(BaseModel):
     priority: str = Field(..., min_length=1, max_length=20)
     date: str = Field(..., max_length=10)
     notes: Optional[str] = Field("", max_length=500)
+
+class PortfolioItemIn(BaseModel):
+    ticker: str = Field(..., min_length=1, max_length=10)
+    quantity: float = Field(..., gt=0)
+    average_price: float = Field(..., gt=0)
 
 class BulkDeleteIn(BaseModel):
     ids: List[int]
@@ -273,6 +278,37 @@ def investments(user: dict = Depends(get_current_user), month: Optional[str] = N
     return {**alloc, "investment_suggested": amount,
             "emergency_goal": data.get("emergency_goal", 0),
             "balance": data.get("balance", 0)}
+
+@app.get("/api/portfolio")
+def get_portfolio(user: dict = Depends(get_current_user)):
+    return get_user_portfolio_data(user["id"])
+
+@app.post("/api/portfolio")
+def add_portfolio_item(item: PortfolioItemIn, user: dict = Depends(get_current_user)):
+    conn = get_connection()
+    try:
+        # Check if already exists to update or insert
+        row = conn.execute("SELECT id, quantity, average_price FROM portfolio WHERE user_id=? AND ticker=?", (user["id"], item.ticker.upper())).fetchone()
+        if row:
+            # Calculate new average price
+            new_qty = row["quantity"] + item.quantity
+            new_avg = ((row["quantity"] * row["average_price"]) + (item.quantity * item.average_price)) / new_qty
+            conn.execute("UPDATE portfolio SET quantity=?, average_price=? WHERE id=?", (new_qty, new_avg, row["id"]))
+        else:
+            conn.execute("INSERT INTO portfolio (user_id, ticker, quantity, average_price) VALUES (?,?,?,?)",
+                         (user["id"], item.ticker.upper(), item.quantity, item.average_price))
+        conn.commit()
+        return {"status": "success"}
+    finally:
+        conn.close()
+
+@app.delete("/api/portfolio/{item_id}")
+def delete_portfolio_item(item_id: int, user: dict = Depends(get_current_user)):
+    conn = get_connection()
+    conn.execute("DELETE FROM portfolio WHERE id=? AND user_id=?", (item_id, user["id"]))
+    conn.commit()
+    conn.close()
+    return {"status": "success"}
 
 @app.get("/health")
 def health():

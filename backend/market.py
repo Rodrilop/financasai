@@ -98,3 +98,60 @@ def get_allocation(profile: str, amount: float) -> Dict:
             {"name":"CDB/LCI/LCA","pct":alloc["cdb"],"value":amount*alloc["cdb"]/100,"color":"#8b5cf6"},
         ]
     }
+
+def get_user_portfolio_data(user_id: int) -> Dict:
+    """Fetch user's portfolio from DB and enrich with live yfinance data."""
+    from database import get_connection
+    conn = get_connection()
+    rows = conn.execute("SELECT id, ticker, quantity, average_price FROM portfolio WHERE user_id=?", (user_id,)).fetchall()
+    conn.close()
+
+    if not rows:
+        return {"items": [], "total_equity": 0, "total_profit": 0, "total_profit_pct": 0}
+
+    items = []
+    total_invested = 0
+    total_equity = 0
+
+    # Fetch live data using the existing fetch_batch logic
+    # fetch_batch expects dicts with 'ticker'
+    batch_items = [{"id": r["id"], "ticker": r["ticker"], "qty": r["quantity"], "avg_price": r["average_price"]} for r in rows]
+    live_data = fetch_batch(batch_items)
+
+    for item in live_data:
+        qty = item["qty"]
+        avg_price = item["avg_price"]
+        current_price = item.get("price") or avg_price  # Fallback if fetch fails
+        
+        invested = qty * avg_price
+        equity = qty * current_price
+        profit = equity - invested
+        profit_pct = (profit / invested * 100) if invested > 0 else 0
+
+        total_invested += invested
+        total_equity += equity
+
+        items.append({
+            "id": item["id"],
+            "ticker": item["ticker"],
+            "quantity": qty,
+            "average_price": avg_price,
+            "current_price": current_price,
+            "invested": invested,
+            "equity": equity,
+            "profit": profit,
+            "profit_pct": profit_pct,
+            "change_pct": item.get("change_pct", 0),
+            "error": item.get("error")
+        })
+
+    total_profit = total_equity - total_invested
+    total_profit_pct = (total_profit / total_invested * 100) if total_invested > 0 else 0
+
+    return {
+        "items": sorted(items, key=lambda x: x["equity"], reverse=True),
+        "total_invested": total_invested,
+        "total_equity": total_equity,
+        "total_profit": total_profit,
+        "total_profit_pct": total_profit_pct
+    }

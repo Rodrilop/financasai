@@ -15,14 +15,18 @@ const SIG = { buy: { label: '🟢 Compra', cls: 'signal-buy' }, neutral: { label
 export default function Investments() {
   const [invData, setInvData]   = useState(null)
   const [market, setMarket]     = useState(null)
+  const [portfolio, setPortfolio] = useState(null)
   const [loadInv, setLoadInv]   = useState(true)
   const [loadMkt, setLoadMkt]   = useState(true)
+  const [loadPort, setLoadPort] = useState(true)
   const [activeTab, setActiveTab] = useState('acoes')
   const [profile, setProfile]   = useState('moderado')
+  const [form, setForm] = useState({ ticker: '', quantity: '', average_price: '' })
 
   useEffect(() => {
     api.get('/api/investments').then(r => { setInvData(r.data); setProfile(r.data.profile?.toLowerCase() === 'conservador' ? 'conservador' : r.data.profile?.toLowerCase() === 'agressivo' ? 'agressivo' : 'moderado'); setLoadInv(false) }).catch(() => setLoadInv(false))
     api.get('/api/market').then(r => { setMarket(r.data); setLoadMkt(false) }).catch(() => setLoadMkt(false))
+    api.get('/api/portfolio').then(r => { setPortfolio(r.data); setLoadPort(false) }).catch(() => setLoadPort(false))
   }, [])
 
   const changeProfile = async (p) => {
@@ -31,6 +35,21 @@ export default function Investments() {
     await api.put('/api/settings', { ...s.data, investor_profile: p }).catch(() => {})
     const r = await api.get('/api/investments').catch(() => ({ data: invData }))
     setInvData(r.data)
+  }
+
+  const addPortfolioItem = async (e) => {
+    e.preventDefault()
+    if (!form.ticker || !form.quantity || !form.average_price) return
+    setLoadPort(true)
+    await api.post('/api/portfolio', form).catch(() => {})
+    setForm({ ticker: '', quantity: '', average_price: '' })
+    api.get('/api/portfolio').then(r => { setPortfolio(r.data); setLoadPort(false) }).catch(() => setLoadPort(false))
+  }
+
+  const deletePortfolioItem = async (id) => {
+    setLoadPort(true)
+    await api.delete(`/api/portfolio/${id}`).catch(() => {})
+    api.get('/api/portfolio').then(r => { setPortfolio(r.data); setLoadPort(false) }).catch(() => setLoadPort(false))
   }
 
   const emergencyPct = invData?.emergency_goal > 0
@@ -114,6 +133,64 @@ export default function Investments() {
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>{emergencyPct.toFixed(0)}% da meta atingida</div>
         </div>
+      </div>
+
+      {/* Minha Carteira Real */}
+      <div className="chart-card" style={{ marginBottom: 16 }}>
+        <div className="chart-title">💼 Minha Carteira (Tempo Real B3)</div>
+        
+        {loadPort ? <div className="loading"><div className="spinner"/></div> : portfolio && (
+          <div>
+            <div style={{ display: 'flex', gap: 24, marginBottom: 16, background: 'var(--bg-base)', padding: 16, borderRadius: 8 }}>
+                <div>Total Investido<br/><strong style={{ fontSize: 18 }}>{fmt(portfolio.total_invested)}</strong></div>
+                <div>Saldo Atual<br/><strong style={{ fontSize: 18 }}>{fmt(portfolio.total_equity)}</strong></div>
+                <div style={{ color: portfolio.total_profit >= 0 ? '#10b981' : '#ef4444' }}>
+                   Lucro / Prejuízo<br/>
+                   <strong style={{ fontSize: 18 }}>{fmt(portfolio.total_profit)} ({portfolio.total_profit_pct.toFixed(2)}%)</strong>
+                </div>
+            </div>
+
+            <div className="table-container" style={{ marginBottom: 16, maxHeight: 300, overflowY: 'auto' }}>
+              <table className="table">
+                <thead><tr><th>Ativo</th><th>Qtd</th><th>Preço Médio</th><th>Preço Atual</th><th>Saldo</th><th>Lucro/Prej.</th><th></th></tr></thead>
+                <tbody>
+                  {portfolio.items?.map(i => (
+                    <tr key={i.id}>
+                      <td style={{ fontWeight: 600 }}>{i.ticker}</td>
+                      <td>{i.quantity}</td>
+                      <td>{fmt(i.average_price)}</td>
+                      <td style={{ color: i.current_price ? 'inherit' : 'var(--text-muted)' }}>{i.current_price ? fmt(i.current_price) : 'N/D'}</td>
+                      <td>{fmt(i.equity)}</td>
+                      <td style={{ color: i.profit >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                        {fmt(i.profit)} ({i.profit_pct.toFixed(2)}%)
+                      </td>
+                      <td style={{ textAlign: 'right' }}><button className="btn btn-secondary btn-sm" onClick={() => deletePortfolioItem(i.id)}>🗑️</button></td>
+                    </tr>
+                  ))}
+                  {!portfolio.items?.length && <tr><td colSpan="7" style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>Sua carteira está vazia. Adicione ativos abaixo para acompanhar as cotações ao vivo.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={addPortfolioItem} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', background: 'var(--bg-elevated)', padding: 16, borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ flex: 1 }}>
+               <label className="form-label" style={{ fontSize: 12, marginBottom: 4 }}>Ticker (Ex: PETR4)</label>
+               <input className="form-control" value={form.ticker} onChange={e => setForm({...form, ticker: e.target.value.toUpperCase()})} required />
+            </div>
+            <div style={{ flex: 1 }}>
+               <label className="form-label" style={{ fontSize: 12, marginBottom: 4 }}>Quantidade</label>
+               <input type="number" step="0.01" min="0.01" className="form-control" value={form.quantity} onChange={e => setForm({...form, quantity: e.target.value})} required />
+            </div>
+            <div style={{ flex: 1 }}>
+               <label className="form-label" style={{ fontSize: 12, marginBottom: 4 }}>Preço Médio (R$)</label>
+               <input type="number" step="0.01" min="0.01" className="form-control" value={form.average_price} onChange={e => setForm({...form, average_price: e.target.value})} required />
+            </div>
+            <button type="submit" className="btn btn-primary" style={{ height: 42, padding: '0 24px' }} disabled={loadPort}>
+              Adicionar
+            </button>
+        </form>
       </div>
 
       {/* Market Tabs */}
