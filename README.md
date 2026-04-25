@@ -223,7 +223,7 @@ Stack 100% gratuito para projetos pessoais:
    TURSO_DATABASE_URL=libsql://financasai-...turso.io
    TURSO_AUTH_TOKEN=eyJh...
    ```
-4. Copie a URL do serviço: `https://financasai-backend.onrender.com`
+4. Copie a URL do serviço: `https://financasai.onrender.com`
 
 ### Passo 3 — Frontend (Vercel)
 
@@ -233,7 +233,7 @@ Stack 100% gratuito para projetos pessoais:
    - **Framework Preset**: Vite (detectado automaticamente)
 3. Em **Environment Variables**, adicione:
    ```
-   VITE_API_URL=https://financasai-backend.onrender.com
+   VITE_API_URL=https://financasai.onrender.com
    ```
 4. Clique em **Deploy** — sua URL será `https://financasai.vercel.app`
 
@@ -242,7 +242,7 @@ Stack 100% gratuito para projetos pessoais:
 1. Crie uma conta em [uptimerobot.com](https://uptimerobot.com)
 2. Crie um novo monitor:
    - **Tipo**: HTTP(S)
-   - **URL**: `https://financasai-backend.onrender.com/health`
+   - **URL**: `https://financasai.onrender.com/health`
    - **Intervalo**: 5 minutos
 3. Isso mantém o backend acordado e evita o cold start
 

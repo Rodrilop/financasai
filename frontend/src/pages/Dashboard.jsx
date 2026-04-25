@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import api from '../api/client'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
@@ -29,7 +29,7 @@ export default function Dashboard() {
   }, [])
 
   if (loading) return <div className="loading"><div className="spinner" /><span>Carregando...</span></div>
-  if (!data) return <div className="empty"><div className="icon">âš ï¸</div><p>Erro ao carregar dados</p></div>
+  if (!data) return <div className="empty"><div className="icon">⚠️</div><p>Erro ao carregar dados</p></div>
 
   const catData = Object.entries(data.category_totals || {}).map(([name, value]) => ({ name, value }))
   const prioData = [
@@ -49,31 +49,31 @@ export default function Dashboard() {
     <div>
       <div className="page-header">
         <h1>Dashboard</h1>
-        <p>VisÃ£o geral das suas finanÃ§as â€” {data.reference_month || 'mÃªs atual'}</p>
+        <p>Visão geral das suas finanças — {data.reference_month || 'mês atual'}</p>
       </div>
 
       {/* Cards */}
       <div className="cards-grid">
         <div className="card">
-          <div className="card-icon">ðŸ’¼</div>
+          <div className="card-icon">💼</div>
           <div className="card-label">Renda Total</div>
           <div className="card-value green">{fmt(income)}</div>
-          <div className="card-sub">SalÃ¡rio + rendas extras</div>
+          <div className="card-sub">Salário + rendas extras</div>
         </div>
         <div className="card">
-          <div className="card-icon">ðŸ’¸</div>
+          <div className="card-icon">💸</div>
           <div className="card-label">Total de Gastos</div>
           <div className={`card-value ${expenses > income ? 'red' : 'amber'}`}>{fmt(expenses)}</div>
-          <div className="card-sub">{data.expense_count || 0} lanÃ§amentos</div>
+          <div className="card-sub">{data.expense_count || 0} lançamentos</div>
         </div>
         <div className="card">
-          <div className="card-icon">ðŸ’°</div>
-          <div className="card-label">Saldo DisponÃ­vel</div>
+          <div className="card-icon">💰</div>
+          <div className="card-label">Saldo Disponível</div>
           <div className={`card-value ${data.balance >= 0 ? 'green' : 'red'}`}>{fmt(data.balance)}</div>
-          <div className="card-sub">{income > 0 ? ((data.balance / income) * 100).toFixed(1) + '% da renda' : 'â€”'}</div>
+          <div className="card-sub">{income > 0 ? ((data.balance / income) * 100).toFixed(1) + '% da renda' : '—'}</div>
         </div>
         <div className="card">
-          <div className="card-icon">ðŸŽ­</div>
+          <div className="card-icon">🎭</div>
           <div className="card-label">Gastos Opcionais</div>
           <div className="card-value amber">{fmt(data.optional_expenses)}</div>
           <div className="card-sub">Limite: {fmt(data.budget_limits?.optional)}</div>
@@ -82,7 +82,7 @@ export default function Dashboard() {
 
       {/* Commitment bar */}
       <div className="progress-bar-container chart-card" style={{ marginBottom: 16 }}>
-        <div className="chart-title">ðŸŽ¯ Comprometimento do salÃ¡rio</div>
+        <div className="chart-title">🎯 Comprometimento do salário</div>
         <div className="progress-track">
           <div className="progress-segment" style={{ width: essPct + '%', background: '#10b981' }} title={`Essencial ${essPct.toFixed(1)}%`} />
           <div className="progress-segment" style={{ width: impPct + '%', background: '#f59e0b' }} title={`Importante ${impPct.toFixed(1)}%`} />
@@ -90,7 +90,7 @@ export default function Dashboard() {
           <div className="progress-segment" style={{ width: freePct + '%', background: '#1e3050' }} title={`Livre ${freePct.toFixed(1)}%`} />
         </div>
         <div className="progress-legend">
-          {[['#10b981','Essencial',essPct],['#f59e0b','Importante',impPct],['#ef4444','Opcional',optPct],['#1e3050','DisponÃ­vel',freePct]].map(([c,l,p]) => (
+          {[['#10b981','Essencial',essPct],['#f59e0b','Importante',impPct],['#ef4444','Opcional',optPct],['#1e3050','Disponível',freePct]].map(([c,l,p]) => (
             <div key={l} className="legend-item"><div className="legend-dot" style={{ background: c }} />{l} {p.toFixed(1)}%</div>
           ))}
         </div>
@@ -99,7 +99,7 @@ export default function Dashboard() {
       {/* Charts */}
       <div className="charts-grid">
         <div className="chart-card">
-          <div className="chart-title">ðŸ• Gastos por Categoria</div>
+          <div className="chart-title">🍕 Gastos por Categoria</div>
           {catData.length > 0 ? (
             <ResponsiveContainer width="100%" height={240}>
               <PieChart>
@@ -113,7 +113,7 @@ export default function Dashboard() {
         </div>
 
         <div className="chart-card">
-          <div className="chart-title">ðŸ“Š Gastos por Prioridade vs. Limite</div>
+          <div className="chart-title">📊 Gastos por Prioridade vs. Limite</div>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={prioData} barGap={4}>
               <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
@@ -130,12 +130,12 @@ export default function Dashboard() {
       {/* Recent expenses */}
       <div className="table-card">
         <div className="table-header">
-          <h3>ðŸ• Despesas Recentes</h3>
-          <a href="/expenses" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>Ver todas â†’</a>
+          <h3>🕐 Despesas Recentes</h3>
+          <a href="/expenses" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>Ver todas →</a>
         </div>
         {data.recent_expenses?.length > 0 ? (
           <table>
-            <thead><tr><th>DescriÃ§Ã£o</th><th>Categoria</th><th>Prioridade</th><th>Data</th><th style={{textAlign:'right'}}>Valor</th></tr></thead>
+            <thead><tr><th>Descrição</th><th>Categoria</th><th>Prioridade</th><th>Data</th><th style={{textAlign:'right'}}>Valor</th></tr></thead>
             <tbody>
               {data.recent_expenses.map(e => (
                 <tr key={e.id}>
@@ -153,4 +153,3 @@ export default function Dashboard() {
     </div>
   )
 }
-

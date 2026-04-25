@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import api from '../api/client'
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, RadialBarChart, RadialBar, Legend } from 'recharts'
 
@@ -30,8 +30,8 @@ export default function Analysis() {
     setChatLoading(false)
   }
 
-  if (loading) return <div className="loading"><div className="spinner" /><span>Carregando anÃ¡lise...</span></div>
-  if (!data) return <div className="empty"><div className="icon">âš ï¸</div><p>Erro ao carregar</p></div>
+  if (loading) return <div className="loading"><div className="spinner" /><span>Carregando análise...</span></div>
+  if (!data) return <div className="empty"><div className="icon">⚠️</div><p>Erro ao carregar</p></div>
 
   const income = data.total_income || 0
   const gaugeData = [
@@ -43,34 +43,34 @@ export default function Analysis() {
   return (
     <div>
       <div className="page-header">
-        <h1>ðŸ“Š AnÃ¡lise Financeira</h1>
-        <p>EstatÃ­sticas detalhadas e recomendaÃ§Ãµes inteligentes</p>
+        <h1>📊 Análise Financeira</h1>
+        <p>Estatísticas detalhadas e recomendações inteligentes</p>
       </div>
 
       {/* Stats */}
       <div className="stats-grid">
         <div className="stat-item">
-          <div className="stat-label">ðŸ’¼ Renda Total</div>
+          <div className="stat-label">💼 Renda Total</div>
           <div className="stat-value text-accent">{fmt(income)}</div>
         </div>
         <div className="stat-item">
-          <div className="stat-label">ðŸ’¸ Total Gastos</div>
+          <div className="stat-label">💸 Total Gastos</div>
           <div className="stat-value text-amber">{fmt(data.total_expenses)}</div>
         </div>
         <div className="stat-item">
-          <div className="stat-label">ðŸ’° Saldo</div>
+          <div className="stat-label">💰 Saldo</div>
           <div className={`stat-value ${data.balance >= 0 ? 'text-accent' : 'text-red'}`}>{fmt(data.balance)}</div>
         </div>
         <div className="stat-item">
-          <div className="stat-label">ðŸŽ¯ LanÃ§amentos</div>
+          <div className="stat-label">🎯 Lançamentos</div>
           <div className="stat-value">{data.expense_count || 0}</div>
         </div>
         <div className="stat-item">
-          <div className="stat-label">ðŸ“ˆ Para Investir</div>
+          <div className="stat-label">📈 Para Investir</div>
           <div className="stat-value text-accent">{fmt(data.investment_suggested)}</div>
         </div>
         <div className="stat-item">
-          <div className="stat-label">ðŸ¦ % Investimentos</div>
+          <div className="stat-label">🏦 % Investimentos</div>
           <div className="stat-value">{data.investment_pct || 20}%</div>
         </div>
       </div>
@@ -78,7 +78,7 @@ export default function Analysis() {
       {/* 50/30/20 Gauge */}
       <div className="charts-grid">
         <div className="chart-card">
-          <div className="chart-title">ðŸŽ¯ Regra OrÃ§amentÃ¡ria â€” Real vs. Recomendado</div>
+          <div className="chart-title">🎯 Regra Orçamentária — Real vs. Recomendado</div>
           <div style={{ marginTop: 8 }}>
             {gaugeData.map(g => (
               <div key={g.name} style={{ marginBottom: 14 }}>
@@ -95,7 +95,7 @@ export default function Analysis() {
         </div>
 
         <div className="chart-card">
-          <div className="chart-title">ðŸ“‹ Alertas Ativos ({data.alerts?.length || 0})</div>
+          <div className="chart-title">📋 Alertas Ativos ({data.alerts?.length || 0})</div>
           <div style={{ maxHeight: 240, overflowY: 'auto' }}>
             {data.alerts?.length > 0
               ? data.alerts.map((a, i) => (
@@ -103,11 +103,11 @@ export default function Analysis() {
                   <div>
                     <div className="alert-title">{a.icon} {a.title}</div>
                     <div className="alert-message">{a.message}</div>
-                    <div className="alert-suggestion">ðŸ’¡ {a.suggestion}</div>
+                    <div className="alert-suggestion">💡 {a.suggestion}</div>
                   </div>
                 </div>
               ))
-              : <div className="empty" style={{ padding: 24 }}><p>âœ… Nenhum alerta! Suas finanÃ§as estÃ£o saudÃ¡veis.</p></div>
+              : <div className="empty" style={{ padding: 24 }}><p>✅ Nenhum alerta! Suas finanças estão saudáveis.</p></div>
             }
           </div>
         </div>
@@ -116,28 +116,28 @@ export default function Analysis() {
       {/* AI Recommendations */}
       <div className="ai-box">
         <div className="ai-box-header">
-          <span style={{ fontSize: 22 }}>ðŸ¤–</span>
-          <h3>RecomendaÃ§Ãµes da IA (Gemini)</h3>
+          <span style={{ fontSize: 22 }}>🤖</span>
+          <h3>Recomendações da IA (Gemini)</h3>
           <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto' }} onClick={loadReco} disabled={recoLoading}>
-            {recoLoading ? 'â³ Analisando...' : 'âœ¨ Gerar RecomendaÃ§Ãµes'}
+            {recoLoading ? '⏳ Analisando...' : '✨ Gerar Recomendações'}
           </button>
         </div>
         {reco
           ? <div className="ai-text">{reco}</div>
-          : <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Clique em "Gerar RecomendaÃ§Ãµes" para receber anÃ¡lise personalizada baseada nos seus dados reais.</div>
+          : <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Clique em "Gerar Recomendações" para receber análise personalizada baseada nos seus dados reais.</div>
         }
       </div>
 
       {/* Chat */}
       <div className="chart-card">
-        <div className="chart-title">ðŸ’¬ Pergunte sobre suas finanÃ§as</div>
+        <div className="chart-title">💬 Pergunte sobre suas finanças</div>
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           <input className="form-control" style={{ flex: 1 }}
             value={chat} onChange={e => setChat(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && sendChat()}
-            placeholder="Ex: Quanto gastei em alimentaÃ§Ã£o? O que posso cortar?" />
+            placeholder="Ex: Quanto gastei em alimentação? O que posso cortar?" />
           <button className="btn btn-primary" onClick={sendChat} disabled={chatLoading}>
-            {chatLoading ? 'â³' : 'Perguntar'}
+            {chatLoading ? '⏳' : 'Perguntar'}
           </button>
         </div>
         {chatAns && (
@@ -149,4 +149,3 @@ export default function Analysis() {
     </div>
   )
 }
-
