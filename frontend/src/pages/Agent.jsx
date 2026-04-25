@@ -11,8 +11,36 @@ export default function Agent() {
   const [input, setInput] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const endRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // Voice Recognition Logic
+  const startListening = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Seu navegador não suporta reconhecimento de voz.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-BR';
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+      // Auto-send after a small delay to let user see the text
+      setTimeout(() => {
+        sendMessage(transcript);
+      }, 500);
+    };
+
+    recognition.start();
+  };
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -154,6 +182,16 @@ export default function Agent() {
             title="Anexar Cupom Fiscal"
           >
             📸
+          </button>
+
+          <button 
+            className={`btn ${isListening ? 'btn-danger pulse' : 'btn-secondary'}`} 
+            style={{ borderRadius: '24px', padding: '0 16px', fontSize: 20, transition: 'all 0.3s' }} 
+            onClick={startListening}
+            title="Comando de Voz"
+            disabled={loading}
+          >
+            {isListening ? '🛑' : '🎙️'}
           </button>
           
           <input 

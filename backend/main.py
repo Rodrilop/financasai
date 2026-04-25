@@ -362,6 +362,46 @@ def trigger_agent(user: dict = Depends(get_current_user)):
         return {"status": "success", "alert": alert}
     return {"status": "success", "message": "Nenhuma dica necessária no momento."}
 
+# ── WhatsApp Webhook ──────────────────────────────────────────────────────────
+
+@app.post("/api/webhook/whatsapp")
+async def whatsapp_webhook(request: Request):
+    """
+    Endpoint para integração com WhatsApp (Twilio, Meta ou Pontes Locais).
+    Recebe a mensagem, processa via Agente IA e retorna a resposta.
+    """
+    try:
+        # Detecta se é Twilio (Form Data) ou JSON
+        content_type = request.headers.get("Content-Type", "")
+        body_text = ""
+        
+        if "application/x-www-form-urlencoded" in content_type:
+            form_data = await request.form()
+            body_text = form_data.get("Body", "")
+        else:
+            json_data = await request.json()
+            body_text = json_data.get("message", json_data.get("text", ""))
+
+        if not body_text:
+            return {"status": "ignored"}
+
+        # Nota: Em um sistema real, buscaríamos o user_id pelo número de telefone.
+        # Para este projeto, utilizaremos o usuário padrão ID 1 como demonstração.
+        analysis_data = compute_analysis(1)
+        answer = chat_with_ai(body_text, analysis_data, 1)
+
+        # Retorna no formato TwiML (padrão Twilio) ou JSON simples
+        if "application/x-www-form-urlencoded" in content_type:
+            from fastapi.responses import Response
+            twiml = f"<?xml version='1.0' encoding='UTF-8'?><Response><Message>{answer}</Message></Response>"
+            return Response(content=twiml, media_type="application/xml")
+        
+        return {"reply": answer}
+
+    except Exception as e:
+        logger.error(f"WhatsApp Webhook Error: {e}")
+        return {"error": str(e)}
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
