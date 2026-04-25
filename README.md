@@ -1,54 +1,91 @@
 # 📊 FinançasAI
 
-O **FinançasAI** é um assistente financeiro pessoal completo, com um design moderno e responsivo, focado em ajudar você a gerenciar suas despesas, entender seus hábitos de consumo e receber dicas e estratégias de investimentos personalizadas impulsionadas por **Inteligência Artificial (Google Gemini)**.
+O **FinançasAI** é um assistente financeiro pessoal completo, com design moderno em dark mode e totalmente responsivo. Ajuda você a gerenciar despesas, entender seus hábitos de consumo e receber recomendações de investimento personalizadas com **Inteligência Artificial (Google Gemini)**.
 
 ---
 
 ## 🌟 Principais Funcionalidades
 
-- **Gerenciamento de Despesas**: Adicione, edite, categorize e priorize ("Essencial", "Importante", "Opcional") seus gastos mensais. Conta com exclusão em massa e filtros avançados.
-- **Sistema de Autenticação Seguro**: Login e registro com JWT e senhas hasheadas utilizando `bcrypt`.
-- **Análise Inteligente de IA**: Integração nativa com a API do Google Gemini (modelo 2.5-flash) para avaliar a sua saúde financeira, sugerir cortes de despesas reais com base nos seus dados e montar dicas de investimentos baseadas no seu perfil.
-- **Painel de Investimentos**: Recomendações de alocação de carteira (Ações, FIIs, Tesouro Selic, CDBs) baseadas no seu perfil (Conservador, Moderado, Agressivo).
-- **Design Totalmente Responsivo**: Layout premium em "Dark Mode" com navegação inferior (*Bottom Navigation*) quando acessado por dispositivos móveis, garantindo ergonomia nativa para celulares de todas as resoluções.
-- **Dashboard e Gráficos**: Resumo visual dos seus gastos por categoria usando o `recharts`.
+- **Gerenciamento de Despesas** — Adicione, edite, categorize e priorize gastos ("Essencial", "Importante", "Opcional"), com exclusão em massa e filtros avançados.
+- **Autenticação Segura** — Login e registro com JWT e senhas hasheadas via `bcrypt`.
+- **Análise com IA** — Integração com a API do Google Gemini (gemini-2.5-flash) para avaliar saúde financeira, sugerir cortes e recomendar investimentos com base no seu perfil.
+- **Painel de Investimentos** — Alocação de carteira (Ações, FIIs, Tesouro Selic, CDBs) adaptada ao perfil: Conservador, Moderado ou Agressivo.
+- **Dashboard e Gráficos** — Resumo visual dos gastos por categoria usando `recharts`.
+- **Design Responsivo** — Layout premium em dark mode com Bottom Navigation em dispositivos móveis.
 
 ---
 
 ## 🛠️ Tecnologias Utilizadas
 
 ### Backend
-- **[Python 3](https://www.python.org/)**
-- **[FastAPI](https://fastapi.tiangolo.com/)**: Construção da API super-rápida.
-- **[Turso / libSQL](https://turso.tech/)**: Banco de dados Edge-Cloud escalável (com fallback local SQLite).
-- **[Google Generative AI](https://aistudio.google.com/)**: Integração com o Google Gemini.
-- **Pytest**: Suíte de testes automatizados do backend.
+- **Python 3.10** com **FastAPI** e **Uvicorn**
+- **SQLite** (padrão local) com suporte opcional ao **Turso / libSQL** (Edge-Cloud)
+- **Google Gemini** via `google-generativeai`
+- **JWT** via `pyjwt` + senhas com `passlib[bcrypt]` (bcrypt 4.0.1)
+- **Pytest** para testes automatizados
 
 ### Frontend
-- **[React 18](https://react.dev/)** + **[Vite](https://vitejs.dev/)**: Framework rápido de desenvolvimento UI.
-- **React Router DOM**: Navegação, roteamento e rotas privadas protegidas por AuthContext.
-- **Recharts**: Criação de gráficos financeiros interativos.
-- **Vitest**: Testes unitários do frontend.
+- **React 18** + **Vite 5**
+- **React Router DOM** — navegação e rotas protegidas via `AuthContext`
+- **Recharts** — gráficos financeiros interativos
+- **Axios** — comunicação com a API
+- **Vitest** + **Testing Library** — testes unitários
+
+### Infraestrutura
+- **Docker** + **Docker Compose** — ambiente completo em contêineres
 
 ---
 
-## 🚀 Como Executar o Projeto Localmente
+## 🚀 Como Executar
 
-### 1. Clonando o Repositório
+### ✅ Opção 1 — Docker (Recomendado)
+
+A forma mais simples de rodar o projeto inteiro com um único comando.
+
+**Pré-requisitos:** Docker Desktop instalado e em execução.
+
+**1. Clone o repositório:**
 ```bash
 git clone https://github.com/SEU_USUARIO/financasai.git
 cd financasai
 ```
 
-### 2. Configurando o Backend (API)
-Navegue para a pasta do backend:
-```bash
-cd backend
+**2. Crie o arquivo `.env` na raiz do projeto:**
+```env
+GEMINI_API_KEY=sua_chave_gemini_aqui
+GEMINI_MODEL=gemini-2.5-flash
+JWT_SECRET_KEY=uma_chave_secreta_forte_aqui
+TURSO_DATABASE_URL=        # (opcional) URL do banco Turso
+TURSO_AUTH_TOKEN=          # (opcional) Token do Turso
 ```
 
-Instale as dependências num ambiente Python:
+> ⚠️ Sem `TURSO_DATABASE_URL`, o app usa **SQLite local** automaticamente. Não é necessário configurar o Turso para rodar.
+
+**3. Suba os contêineres:**
 ```bash
-# Recomendado: Crie e ative um ambiente virtual (venv)
+docker compose up --build
+```
+
+| Serviço | URL |
+|---|---|
+| Frontend (React/Vite) | http://localhost:5173 |
+| Backend (FastAPI) | http://localhost:8000 |
+| Documentação Swagger | http://localhost:8000/docs |
+
+Para parar:
+```bash
+docker compose down
+```
+
+---
+
+### 🔧 Opção 2 — Execução Local (sem Docker)
+
+**Backend:**
+```bash
+cd backend
+
+# Crie e ative um ambiente virtual
 python -m venv venv
 # Windows:
 venv\Scripts\activate
@@ -58,53 +95,90 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Crie um arquivo `.env` na pasta `backend` com as suas chaves:
+Crie o arquivo `backend/.env`:
 ```env
 GEMINI_API_KEY=sua_chave_gemini_aqui
 GEMINI_MODEL=gemini-2.5-flash
 JWT_SECRET_KEY=uma_chave_secreta_forte_aqui
-TURSO_DATABASE_URL= # (opcional) sua_url_turso_aqui
-TURSO_AUTH_TOKEN= # (opcional) seu_token_turso_aqui
 ```
 
-Inicie o servidor local do FastAPI:
+Inicie a API:
 ```bash
 python -m uvicorn main:app --reload --port 8000
 ```
-A documentação da sua API (Swagger) estará disponível em: `http://localhost:8000/docs`.
 
-### 3. Configurando o Frontend
-Abra um **novo terminal**, volte para a raiz do projeto e acesse a pasta do frontend:
+**Frontend** (em outro terminal):
 ```bash
 cd frontend
-```
-
-Instale as dependências do Node:
-```bash
 npm install
+npm run dev
 ```
 
-Inicie o servidor de desenvolvimento do Vite:
-### 4. Executando com Docker (Opcional)
-Se preferir, você pode rodar todo o ambiente (Frontend + Backend) com um único comando usando Docker Compose:
+---
+
+## 🧪 Testes
+
+**Backend:**
 ```bash
-docker-compose up --build
+cd backend
+pytest tests/ -v
 ```
-A aplicação estará disponível em `http://localhost:5173/`.
+
+**Frontend:**
+```bash
+cd frontend
+npm test
+```
 
 ---
 
-## 🔒 Segurança e Boas Práticas no GitHub
+## 📁 Estrutura do Projeto
 
-Para manter o repositório organizado e seguro, recomendamos as seguintes configurações no painel do GitHub:
-- **Branch Protection Rules**: Vá em `Settings > Branches > Add branch protection rule`. Proteja a branch `main` exigindo pull requests e impedindo push direto.
-- **GitHub Releases**: Sempre que finalizar uma grande atualização, vá em `Releases > Draft a new release`, crie uma nova tag (ex: `v1.1.0`) e cole as notas de atualização baseadas no `CHANGELOG.md`.
-
-- **Proteção de Chaves**: O repositório já conta com o arquivo `.gitignore` configurado. Lembre-se de NUNCA subir seu arquivo `backend/.env`.
-- **Autenticação**: Rotas protegidas via JWT (`JSON Web Tokens`).
-- **Validação e Limites**: O backend conta com Rate Limiting (`slowapi`) que evita abusos nos limites de tokens da IA e injeções nos dados usando metadados Pydantic.
-- **CI/CD Pipeline**: GitHub actions configurado para rodar `pytest` e `vitest` em todo commit que for enviado para o repositório principal.
+```
+financasai/
+├── backend/
+│   ├── main.py           # Endpoints FastAPI
+│   ├── auth.py           # JWT e hashing de senhas
+│   ├── database.py       # Conexão SQLite / Turso
+│   ├── analyzer.py       # Lógica de análise financeira
+│   ├── ai_engine.py      # Integração com Google Gemini
+│   ├── market.py         # Dados de mercado (yfinance)
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   ├── .dockerignore
+│   └── tests/
+│       ├── test_auth.py
+│       └── test_main.py
+├── frontend/
+│   ├── src/
+│   │   ├── pages/        # Dashboard, Expenses, Analysis, Investments, Settings, Login, Register
+│   │   ├── components/   # Modal
+│   │   ├── contexts/     # AuthContext (JWT)
+│   │   └── App.jsx
+│   ├── Dockerfile
+│   └── package.json
+├── docker-compose.yml
+└── .env                  # Variáveis de ambiente (não versionar)
+```
 
 ---
 
-Feito com 💻 e IA para sua liberdade financeira!
+## 🔒 Segurança
+
+- **Autenticação JWT** — todas as rotas da API (exceto `/api/auth/*` e `/health`) exigem token Bearer.
+- **Senhas hasheadas** — `bcrypt` com `passlib` (fixado em `bcrypt==4.0.1` por compatibilidade).
+- **Variáveis de ambiente** — nunca versionadas (`.env` está no `.gitignore`).
+- **CORS configurado** — apenas via middleware do FastAPI.
+- **Validação de dados** — todos os inputs validados por modelos Pydantic com limites de tamanho e tipo.
+
+> ⚠️ O arquivo `backend/.env` e o arquivo `.env` da raiz **nunca devem ser commitados** no repositório.
+
+---
+
+## 🔄 CI/CD
+
+O repositório possui um pipeline de GitHub Actions configurado em `.github/` que executa `pytest` e `vitest` automaticamente a cada push para o branch principal.
+
+---
+
+Feito com 💻 e IA para a sua liberdade financeira!
