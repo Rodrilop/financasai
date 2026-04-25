@@ -368,36 +368,53 @@ def trigger_agent(user: dict = Depends(get_current_user)):
 @app.post("/api/webhook/whatsapp")
 async def whatsapp_webhook(request: Request):
     """
-    Endpoint para integração com WhatsApp (Twilio, Meta ou Pontes Locais).
-    Recebe a mensagem, processa via Agente IA e retorna a resposta.
+    Endpoint híbrido para integração com WhatsApp:
+    - Suporta Twilio (x-www-form-urlencoded)
+    - Suporta Evolution API v2 (JSON - messages.upsert)
     """
     try:
-        # Detecta se é Twilio (Form Data) ou JSON
         content_type = request.headers.get("Content-Type", "")
         body_text = ""
+        remote_jid = "whatsapp:default" # ID do usuário no WhatsApp
         
+        # 1. Caso seja Twilio (Form Data)
         if "application/x-www-form-urlencoded" in content_type:
             form_data = await request.form()
             body_text = form_data.get("Body", "")
+            remote_jid = form_data.get("From", "")
+            
+        # 2. Caso seja Evolution API v2 (JSON)
         else:
             json_data = await request.json()
-            body_text = json_data.get("message", json_data.get("text", ""))
+            # A Evolution API v2 envia os dados dentro de 'data' no evento 'messages.upsert'
+            if json_data.get("event") == "messages.upsert":
+                msg_data = json_data.get("data", {}).get("message", {})
+                # Pega texto de conversa simples ou de resposta/extended
+                body_text = msg_data.get("conversation") or msg_data.get("extendedTextMessage", {}).get("text", "")
+                remote_jid = json_data.get("data", {}).get("key", {}).get("remoteJid", "")
+            else:
+                # Fallback para JSON genérico
+                body_text = json_data.get("message", json_data.get("text", ""))
 
         if not body_text:
             return {"status": "ignored"}
 
-        # Nota: Em um sistema real, buscaríamos o user_id pelo número de telefone.
-        # Para este projeto, utilizaremos o usuário padrão ID 1 como demonstração.
+        # Log para debug (opcional)
+        logger.info(f"WhatsApp Message from {remote_jid}: {body_text}")
+
+        # Processamento via Agente IA (ID 1 fixo para demonstração)
         analysis_data = compute_analysis(1)
         answer = chat_with_ai(body_text, analysis_data, 1)
 
-        # Retorna no formato TwiML (padrão Twilio) ou JSON simples
+        # 3. Retorno formatado conforme o provedor
         if "application/x-www-form-urlencoded" in content_type:
             from fastapi.responses import Response
             twiml = f"<?xml version='1.0' encoding='UTF-8'?><Response><Message>{answer}</Message></Response>"
             return Response(content=twiml, media_type="application/xml")
         
-        return {"reply": answer}
+        # Para Evolution API, respondemos com um JSON que pode ser usado para confirmação 
+        # ou o backend pode disparar um POST para a API de envio da Evolution
+        return {"reply": answer, "to": remote_jid}
 
     except Exception as e:
         logger.error(f"WhatsApp Webhook Error: {e}")
