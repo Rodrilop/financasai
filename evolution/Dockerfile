@@ -1,2 +1,2 @@
-FROM atendimentos/evolution-api:latest
+FROM evolutionapi/evolution-api:latest
 EXPOSE 8080
