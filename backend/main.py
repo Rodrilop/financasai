@@ -6,19 +6,11 @@ from typing import Optional, List
 from datetime import datetime
 import os
 import logging
-from pythonjsonlogger import jsonlogger
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-logHandler = logging.StreamHandler()
-formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
-logHandler.setFormatter(formatter)
-logger.addHandler(logHandler)
-
-
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+if not logger.handlers:
+    logger.addHandler(logging.StreamHandler())
 
 from database import get_connection, init_db
 from analyzer import compute_analysis, get_settings, get_all_income
@@ -26,19 +18,15 @@ from market import get_market_data, get_allocation
 from ai_engine import generate_recommendations, chat_with_ai
 from auth import get_password_hash, verify_password, create_access_token, get_current_user
 
-limiter = Limiter(key_func=get_remote_address)
-
 app = FastAPI(title="FinançasAI API")
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Catch all exceptions globally and log them in JSON format."""
-    logging.error(f"Global Error: {exc}")
+    """Catch all exceptions globally and log them."""
+    logger.error(f"Global Error: {exc}", exc_info=True)
     return JSONResponse(status_code=500, content={"detail": "Erro interno no servidor."})
 
 @app.on_event("startup")
@@ -75,7 +63,6 @@ class BulkDeleteIn(BaseModel):
 class ChatIn(BaseModel):
     question: str = Field(..., min_length=1, max_length=1000)
     month: Optional[str] = None
-
 
 class UserRegister(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -122,7 +109,7 @@ def read_settings(user: str = Depends(get_current_user)):
 @app.put("/api/settings")
 def update_settings(data: SettingsIn, user: str = Depends(get_current_user)):
     """Update user settings in the database."""
-    logger.info("Updating settings", extra={"user": user})
+    logger.info(f"Updating settings for user: {user}")
     conn = get_connection()
     conn.execute("""UPDATE settings SET salary=?,reference_month=?,emergency_reserve_goal=?,
                     investment_pct=?,investor_profile=?,budget_essential_pct=?,
@@ -142,7 +129,7 @@ def read_income(user: str = Depends(get_current_user)):
 @app.post("/api/income", status_code=201)
 def add_income(data: IncomeIn, user: str = Depends(get_current_user)):
     """Add a new income record."""
-    logger.info("Adding income", extra={"user": user, "amount": data.amount})
+    logger.info(f"Adding income for user: {user}, amount: {data.amount}")
     conn = get_connection()
     cur = conn.execute("INSERT INTO income (name,amount) VALUES (?,?)", (data.name, data.amount))
     conn.commit()
@@ -160,10 +147,10 @@ def delete_income(income_id: int, user: str = Depends(get_current_user)):
 # ── Expenses ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/expenses")
-def read_expenses(user: str = Depends(get_current_user), month: Optional[str] = None, category: Optional[str] = None,
-                  priority: Optional[str] = None, q: Optional[str] = None):
+def read_expenses(user: str = Depends(get_current_user), month: Optional[str] = None,
+                  category: Optional[str] = None, priority: Optional[str] = None,
+                  q: Optional[str] = None):
     """Read expenses with optional filtering by month, category, priority or search query."""
-                  priority: Optional[str] = None, q: Optional[str] = None):
     conn = get_connection()
     sql = "SELECT * FROM expenses WHERE 1=1"
     params = []
@@ -183,7 +170,7 @@ def read_expenses(user: str = Depends(get_current_user), month: Optional[str] = 
 @app.post("/api/expenses", status_code=201)
 def add_expense(data: ExpenseIn, user: str = Depends(get_current_user)):
     """Add a new expense record."""
-    logger.info("Adding expense", extra={"user": user, "amount": data.amount, "category": data.category})
+    logger.info(f"Adding expense for user: {user}, amount: {data.amount}, category: {data.category}")
     conn = get_connection()
     cur = conn.execute(
         "INSERT INTO expenses (description,amount,category,priority,date,notes) VALUES (?,?,?,?,?,?)",
@@ -225,17 +212,15 @@ def analysis(user: str = Depends(get_current_user), month: Optional[str] = None)
     return compute_analysis(month)
 
 @app.get("/api/analysis/recommendations")
-@limiter.limit("5/minute")
 def recommendations(request: Request, month: Optional[str] = None, user: str = Depends(get_current_user)):
     data = compute_analysis(month)
     text = generate_recommendations(data)
     return {"text": text}
 
 @app.post("/api/chat")
-@limiter.limit("10/minute")
 def chat(request: Request, data: ChatIn, user: str = Depends(get_current_user)):
-    analysis = compute_analysis(data.month)
-    answer = chat_with_ai(data.question, analysis)
+    analysis_data = compute_analysis(data.month)
+    answer = chat_with_ai(data.question, analysis_data)
     return {"answer": answer}
 
 # ── Market & Investments ──────────────────────────────────────────────────────

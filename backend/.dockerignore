@@ -1,0 +1,26 @@
+# Ambientes virtuais locais
+venv/
+venv2/
+.venv/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Variáveis de ambiente (injetadas pelo docker-compose)
+.env
+
+# Banco de dados local (será criado no container)
+*.db
+*.sqlite
+
+# Scripts desnecessários
+get-pip.py
+
+# Testes (não necessários na imagem de produção)
+tests/
+
+# Ferramentas de desenvolvimento
+.pytest_cache/

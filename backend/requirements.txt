@@ -3,15 +3,10 @@ uvicorn
 python-dotenv
 python-multipart
 pydantic
-pandas
 yfinance
 google-generativeai
 pytest
-pytest-asyncio
-httpx
-slowapi
-libsql-experimental
 passlib[bcrypt]
+bcrypt==4.0.1
 pyjwt
-python-json-logger
-alembic
+libsql-experimental
