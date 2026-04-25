@@ -63,17 +63,32 @@ def get_connection():
             return proxy
         except ImportError:
             print("libsql-experimental is not installed. Falling back to local SQLite.")
-            
+
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
+def _migrate(conn):
+    """Add user_id column to existing tables if not present (safe migration)."""
+    migrations = [
+        "ALTER TABLE settings ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE income ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE expenses ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1",
+    ]
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+            conn.commit()
+        except Exception:
+            # Column already exists — safe to ignore
+            pass
+
 def init_db():
     """Initialize the database by creating all required tables and default settings."""
     conn = get_connection()
     c = conn.cursor()
-    
+
     # Tabela de Usuários (Auth)
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -84,10 +99,11 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
+
     c.execute("""
         CREATE TABLE IF NOT EXISTS settings (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
             salary REAL DEFAULT 0,
             reference_month TEXT DEFAULT '',
             emergency_reserve_goal REAL DEFAULT 0,
@@ -101,6 +117,7 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS income (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
             name TEXT NOT NULL,
             amount REAL NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -109,6 +126,7 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
             description TEXT NOT NULL,
             amount REAL NOT NULL,
             category TEXT NOT NULL,
@@ -118,13 +136,26 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    c.execute("SELECT COUNT(*) FROM settings")
-    if c.fetchone()[0] == 0:
-        month = datetime.now().strftime("%Y-%m")
-        c.execute(
-            "INSERT INTO settings (id,salary,reference_month,emergency_reserve_goal,investment_pct,investor_profile,budget_essential_pct,budget_important_pct,budget_optional_pct) VALUES (1,0,?,0,20,'moderado',50,30,20)",
-            (month,)
-        )
     conn.commit()
+
+    # Safe migration for existing databases (Turso)
+    _migrate(conn)
+
     conn.close()
 
+def ensure_user_settings(user_id: int):
+    """Create a default settings row for a new user if one doesn't exist."""
+    conn = get_connection()
+    row = conn.execute("SELECT id FROM settings WHERE user_id=?", (user_id,)).fetchone()
+    if not row:
+        month = datetime.now().strftime("%Y-%m")
+        conn.execute(
+            """INSERT INTO settings
+               (user_id, salary, reference_month, emergency_reserve_goal,
+                investment_pct, investor_profile, budget_essential_pct,
+                budget_important_pct, budget_optional_pct)
+               VALUES (?,0,?,0,20,'moderado',50,30,20)""",
+            (user_id, month)
+        )
+        conn.commit()
+    conn.close()

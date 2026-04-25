@@ -4,33 +4,38 @@ from typing import Optional
 def fmt(v: float) -> str:
     return f"R$ {v:,.2f}".replace(",","X").replace(".",",").replace("X",".")
 
-def get_settings():
+def get_settings(user_id: int):
     conn = get_connection()
-    row = conn.execute("SELECT * FROM settings WHERE id=1").fetchone()
+    row = conn.execute("SELECT * FROM settings WHERE user_id=?", (user_id,)).fetchone()
     conn.close()
     return dict(row) if row else {}
 
-def get_all_income():
+def get_all_income(user_id: int):
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM income ORDER BY created_at DESC").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM income WHERE user_id=? ORDER BY created_at DESC", (user_id,)
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
-def get_expenses_for_month(month: str):
+def get_expenses_for_month(user_id: int, month: str):
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM expenses WHERE date LIKE ? ORDER BY date DESC", (f"{month}%",)).fetchall()
+    rows = conn.execute(
+        "SELECT * FROM expenses WHERE user_id=? AND date LIKE ? ORDER BY date DESC",
+        (user_id, f"{month}%")
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
-def compute_analysis(month: Optional[str] = None):
-    settings = get_settings()
-    extra_list = get_all_income()
+def compute_analysis(user_id: int, month: Optional[str] = None):
+    settings = get_settings(user_id)
+    extra_list = get_all_income(user_id)
     salary = settings.get("salary", 0)
     extra_total = sum(i["amount"] for i in extra_list)
     total_income = salary + extra_total
 
     ref_month = month or settings.get("reference_month", "")
-    expenses = get_expenses_for_month(ref_month) if ref_month else []
+    expenses = get_expenses_for_month(user_id, ref_month) if ref_month else []
 
     total_expenses = sum(e["amount"] for e in expenses)
     balance = total_income - total_expenses

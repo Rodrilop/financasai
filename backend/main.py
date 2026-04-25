@@ -12,7 +12,7 @@ logger.setLevel(logging.INFO)
 if not logger.handlers:
     logger.addHandler(logging.StreamHandler())
 
-from database import get_connection, init_db
+from database import get_connection, init_db, ensure_user_settings
 from analyzer import compute_analysis, get_settings, get_all_income
 from market import get_market_data, get_allocation
 from ai_engine import generate_recommendations, chat_with_ai
@@ -83,10 +83,15 @@ def register(user: UserRegister):
         conn.close()
         raise HTTPException(status_code=400, detail="Email já cadastrado")
     hashed = get_password_hash(user.password)
-    conn.execute("INSERT INTO users (name, email, hashed_password) VALUES (?, ?, ?)",
-                       (user.name, user.email, hashed))
+    cur = conn.execute(
+        "INSERT INTO users (name, email, hashed_password) VALUES (?, ?, ?)",
+        (user.name, user.email, hashed)
+    )
     conn.commit()
+    new_user_id = cur.lastrowid
     conn.close()
+    # Create isolated settings row for the new user
+    ensure_user_settings(new_user_id)
     return {"ok": True}
 
 @app.post("/api/auth/login")
@@ -96,64 +101,85 @@ def login(user: UserLogin):
     conn.close()
     if not db_user or not verify_password(user.password, db_user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Email ou senha incorretos")
+    # Ensure settings exist (safety net for pre-existing users)
+    ensure_user_settings(db_user["id"])
     access_token = create_access_token(data={"sub": db_user["email"]})
     return {"access_token": access_token, "token_type": "bearer", "name": db_user["name"]}
 
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/settings")
-def read_settings(user: str = Depends(get_current_user)):
-    """Return user settings and configuration parameters."""
-    return get_settings()
+def read_settings(user: dict = Depends(get_current_user)):
+    """Return the authenticated user's settings."""
+    return get_settings(user["id"])
 
 @app.put("/api/settings")
-def update_settings(data: SettingsIn, user: str = Depends(get_current_user)):
-    """Update user settings in the database."""
-    logger.info(f"Updating settings for user: {user}")
+def update_settings(data: SettingsIn, user: dict = Depends(get_current_user)):
+    """Update the authenticated user's settings."""
+    uid = user["id"]
+    logger.info(f"Updating settings for user_id: {uid}")
     conn = get_connection()
-    conn.execute("""UPDATE settings SET salary=?,reference_month=?,emergency_reserve_goal=?,
-                    investment_pct=?,investor_profile=?,budget_essential_pct=?,
-                    budget_important_pct=?,budget_optional_pct=? WHERE id=1""",
-                 (data.salary, data.reference_month, data.emergency_reserve_goal,
-                  data.investment_pct, data.investor_profile, data.budget_essential_pct,
-                  data.budget_important_pct, data.budget_optional_pct))
-    conn.commit(); conn.close()
+    exists = conn.execute("SELECT id FROM settings WHERE user_id=?", (uid,)).fetchone()
+    if exists:
+        conn.execute("""UPDATE settings SET salary=?,reference_month=?,emergency_reserve_goal=?,
+                        investment_pct=?,investor_profile=?,budget_essential_pct=?,
+                        budget_important_pct=?,budget_optional_pct=? WHERE user_id=?""",
+                     (data.salary, data.reference_month, data.emergency_reserve_goal,
+                      data.investment_pct, data.investor_profile, data.budget_essential_pct,
+                      data.budget_important_pct, data.budget_optional_pct, uid))
+    else:
+        conn.execute("""INSERT INTO settings
+                        (user_id,salary,reference_month,emergency_reserve_goal,
+                         investment_pct,investor_profile,budget_essential_pct,
+                         budget_important_pct,budget_optional_pct)
+                        VALUES (?,?,?,?,?,?,?,?,?)""",
+                     (uid, data.salary, data.reference_month, data.emergency_reserve_goal,
+                      data.investment_pct, data.investor_profile, data.budget_essential_pct,
+                      data.budget_important_pct, data.budget_optional_pct))
+    conn.commit()
+    conn.close()
     return {"ok": True}
 
 # ── Income ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/income")
-def read_income(user: str = Depends(get_current_user)):
-    return get_all_income()
+def read_income(user: dict = Depends(get_current_user)):
+    return get_all_income(user["id"])
 
 @app.post("/api/income", status_code=201)
-def add_income(data: IncomeIn, user: str = Depends(get_current_user)):
-    """Add a new income record."""
-    logger.info(f"Adding income for user: {user}, amount: {data.amount}")
+def add_income(data: IncomeIn, user: dict = Depends(get_current_user)):
+    """Add a new income record for the authenticated user."""
+    uid = user["id"]
+    logger.info(f"Adding income for user_id: {uid}, amount: {data.amount}")
     conn = get_connection()
-    cur = conn.execute("INSERT INTO income (name,amount) VALUES (?,?)", (data.name, data.amount))
+    cur = conn.execute(
+        "INSERT INTO income (user_id, name, amount) VALUES (?, ?, ?)",
+        (uid, data.name, data.amount)
+    )
     conn.commit()
     new_id = cur.lastrowid
     conn.close()
     return {"id": new_id, **data.dict()}
 
 @app.delete("/api/income/{income_id}")
-def delete_income(income_id: int, user: str = Depends(get_current_user)):
+def delete_income(income_id: int, user: dict = Depends(get_current_user)):
     conn = get_connection()
-    conn.execute("DELETE FROM income WHERE id=?", (income_id,))
-    conn.commit(); conn.close()
+    conn.execute("DELETE FROM income WHERE id=? AND user_id=?", (income_id, user["id"]))
+    conn.commit()
+    conn.close()
     return {"ok": True}
 
 # ── Expenses ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/expenses")
-def read_expenses(user: str = Depends(get_current_user), month: Optional[str] = None,
+def read_expenses(user: dict = Depends(get_current_user), month: Optional[str] = None,
                   category: Optional[str] = None, priority: Optional[str] = None,
                   q: Optional[str] = None):
-    """Read expenses with optional filtering by month, category, priority or search query."""
+    """Read the authenticated user's expenses with optional filters."""
+    uid = user["id"]
     conn = get_connection()
-    sql = "SELECT * FROM expenses WHERE 1=1"
-    params = []
+    sql = "SELECT * FROM expenses WHERE user_id=?"
+    params: list = [uid]
     if month:
         sql += " AND date LIKE ?"; params.append(f"{month}%")
     if category:
@@ -168,13 +194,14 @@ def read_expenses(user: str = Depends(get_current_user), month: Optional[str] = 
     return [dict(r) for r in rows]
 
 @app.post("/api/expenses", status_code=201)
-def add_expense(data: ExpenseIn, user: str = Depends(get_current_user)):
-    """Add a new expense record."""
-    logger.info(f"Adding expense for user: {user}, amount: {data.amount}, category: {data.category}")
+def add_expense(data: ExpenseIn, user: dict = Depends(get_current_user)):
+    """Add a new expense record for the authenticated user."""
+    uid = user["id"]
+    logger.info(f"Adding expense for user_id: {uid}, amount: {data.amount}, category: {data.category}")
     conn = get_connection()
     cur = conn.execute(
-        "INSERT INTO expenses (description,amount,category,priority,date,notes) VALUES (?,?,?,?,?,?)",
-        (data.description, data.amount, data.category, data.priority, data.date, data.notes)
+        "INSERT INTO expenses (user_id, description, amount, category, priority, date, notes) VALUES (?,?,?,?,?,?,?)",
+        (uid, data.description, data.amount, data.category, data.priority, data.date, data.notes)
     )
     conn.commit()
     new_id = cur.lastrowid
@@ -182,56 +209,64 @@ def add_expense(data: ExpenseIn, user: str = Depends(get_current_user)):
     return {"id": new_id, **data.dict()}
 
 @app.put("/api/expenses/{expense_id}")
-def update_expense(expense_id: int, data: ExpenseIn, user: str = Depends(get_current_user)):
+def update_expense(expense_id: int, data: ExpenseIn, user: dict = Depends(get_current_user)):
     conn = get_connection()
     conn.execute(
-        "UPDATE expenses SET description=?,amount=?,category=?,priority=?,date=?,notes=? WHERE id=?",
-        (data.description, data.amount, data.category, data.priority, data.date, data.notes, expense_id)
+        "UPDATE expenses SET description=?,amount=?,category=?,priority=?,date=?,notes=? WHERE id=? AND user_id=?",
+        (data.description, data.amount, data.category, data.priority, data.date, data.notes,
+         expense_id, user["id"])
     )
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
     return {"id": expense_id, **data.dict()}
 
 @app.delete("/api/expenses/{expense_id}")
-def delete_expense(expense_id: int, user: str = Depends(get_current_user)):
+def delete_expense(expense_id: int, user: dict = Depends(get_current_user)):
     conn = get_connection()
-    conn.execute("DELETE FROM expenses WHERE id=?", (expense_id,))
-    conn.commit(); conn.close()
+    conn.execute("DELETE FROM expenses WHERE id=? AND user_id=?", (expense_id, user["id"]))
+    conn.commit()
+    conn.close()
     return {"ok": True}
 
 @app.post("/api/expenses/bulk-delete")
-def bulk_delete(data: BulkDeleteIn, user: str = Depends(get_current_user)):
+def bulk_delete(data: BulkDeleteIn, user: dict = Depends(get_current_user)):
+    uid = user["id"]
     conn = get_connection()
-    conn.execute(f"DELETE FROM expenses WHERE id IN ({','.join('?'*len(data.ids))})", tuple(data.ids))
-    conn.commit(); conn.close()
+    conn.execute(
+        f"DELETE FROM expenses WHERE user_id=? AND id IN ({','.join('?'*len(data.ids))})",
+        tuple([uid] + data.ids)
+    )
+    conn.commit()
+    conn.close()
     return {"deleted": len(data.ids)}
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/analysis")
-def analysis(user: str = Depends(get_current_user), month: Optional[str] = None):
-    return compute_analysis(month)
+def analysis(user: dict = Depends(get_current_user), month: Optional[str] = None):
+    return compute_analysis(user["id"], month)
 
 @app.get("/api/analysis/recommendations")
-def recommendations(request: Request, month: Optional[str] = None, user: str = Depends(get_current_user)):
-    data = compute_analysis(month)
+def recommendations(request: Request, month: Optional[str] = None, user: dict = Depends(get_current_user)):
+    data = compute_analysis(user["id"], month)
     text = generate_recommendations(data)
     return {"text": text}
 
 @app.post("/api/chat")
-def chat(request: Request, data: ChatIn, user: str = Depends(get_current_user)):
-    analysis_data = compute_analysis(data.month)
+def chat(request: Request, data: ChatIn, user: dict = Depends(get_current_user)):
+    analysis_data = compute_analysis(user["id"], data.month)
     answer = chat_with_ai(data.question, analysis_data)
     return {"answer": answer}
 
 # ── Market & Investments ──────────────────────────────────────────────────────
 
 @app.get("/api/market")
-def market(user: str = Depends(get_current_user)):
+def market(user: dict = Depends(get_current_user)):
     return get_market_data()
 
 @app.get("/api/investments")
-def investments(user: str = Depends(get_current_user), month: Optional[str] = None):
-    data = compute_analysis(month)
+def investments(user: dict = Depends(get_current_user), month: Optional[str] = None):
+    data = compute_analysis(user["id"], month)
     profile = data.get("investor_profile", "moderado")
     amount = data.get("investment_suggested", 0)
     alloc = get_allocation(profile, amount)
