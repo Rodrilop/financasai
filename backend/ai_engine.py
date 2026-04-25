@@ -51,15 +51,15 @@ Seja direto, use linguagem simples e mencione valores reais quando relevante. M�
     except Exception as e:
         return f"⚠️ IA temporariamente indisponível. Veja os alertas automáticos abaixo.\n\nErro: {str(e)}"
 
-def chat_with_ai(question: str, analysis: dict, user_id: int) -> str:
-    """Answer user questions and execute financial actions (Agent)."""
+def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str = None) -> str:
+    """Answer user questions and execute financial actions (Agent), supporting images."""
     try:
         def add_expense_tool(description: str, amount: float, category: str, priority: str, date: str) -> dict:
-            """Adiciona uma nova despesa no sistema do usuário. Use esta ferramenta APENAS quando o usuário disser que gastou/comprou algo.
+            """Adiciona uma nova despesa no sistema do usuário. Use esta ferramenta APENAS quando o usuário disser que gastou/comprou algo ou enviou um cupom fiscal.
             
             Args:
-                description: Descrição curta do gasto (ex: 'Almoço no Ifood', 'Conta de Luz', 'Tênis').
-                amount: Valor numérico positivo do gasto. Extraia do texto do usuário.
+                description: Descrição curta do gasto (ex: 'Almoço no Ifood', 'Conta de Luz', 'Tênis', 'Mercado'). Se o cupom tiver muitos itens, resuma (ex: 'Compras de Mercado - Atacadão').
+                amount: Valor numérico positivo do gasto. Extraia do texto do usuário ou do valor TOTAL do cupom.
                 category: Categoria do gasto. Tente classificar em uma destas: Alimentação, Transporte, Moradia, Saúde, Lazer, Educação, Assinaturas, Outros. Padrão: Outros.
                 priority: Nível de importância. Tente classificar em: Essencial, Importante, Opcional. Padrão: Opcional.
                 date: Data do gasto no formato YYYY-MM-DD. Se hoje, use a data atual.
@@ -170,11 +170,12 @@ def chat_with_ai(question: str, analysis: dict, user_id: int) -> str:
                 return {"status": "error", "message": str(e)}
 
         from datetime import datetime
+        import base64
         hoje = datetime.now().strftime("%Y-%m-%d")
 
         instruction = f"""Você é o Assistente Financeiro IA Pessoal (Consultor Autônomo) do app FinançasAI.
 Hoje é dia {hoje}. Você tem acesso aos dados do usuário e dezenas de ferramentas (tools) para CONTROLE TOTAL do aplicativo.
-SEMPRE que o usuário informar uma intenção (adicionar gasto, mudar salário, adicionar renda extra, alterar perfil, mudar metas, comprar ações/ativos), você DEVE obrigatoriamente usar a ferramenta correspondente para executar a ação.
+SEMPRE que o usuário informar uma intenção (adicionar gasto, mudar salário, adicionar renda extra, alterar perfil, mudar metas, comprar ações/ativos) ou ENVIAR UMA IMAGEM de recibo/nota fiscal, você DEVE obrigatoriamente usar a ferramenta correspondente para executar a ação.
 Não diga "vá nas configurações e mude", FAÇA você mesmo utilizando suas tools.
 Se a data de um gasto não for especificada, ou o usuário usar termos como "hoje" ou "agora", utilize obrigatoriamente a data de hoje ({hoje}).
 Se o usuário pedir para executar mais de uma ação na mesma frase (ex: "mude meu salário para X e adicione uma despesa de Y"), você deve usar AS DUAS ferramentas consecutivamente ou na mesma chamada.
@@ -195,7 +196,7 @@ Após executar as ações, confirme gentilmente o que foi feito. Seja conciso, h
         
         chat = model.start_chat(enable_automatic_function_calling=True)
         
-        context = f"""[Contexto Financeiro Atual]
+        context_text = f"""[Contexto Financeiro Atual]
 - Hoje: {hoje}
 - Renda: R$ {analysis.get('total_income',0):.2f}
 - Gastos Totais: R$ {analysis.get('total_expenses',0):.2f}
@@ -203,7 +204,21 @@ Após executar as ações, confirme gentilmente o que foi feito. Seja conciso, h
 
 O usuário diz: {question}"""
 
-        response = chat.send_message(context)
+        message_content = [context_text]
+
+        if image_base64:
+            # Parse the base64 string
+            mime_type = "image/jpeg"
+            b64_data = image_base64
+            if "data:" in image_base64 and ";base64," in image_base64:
+                header, b64_data = image_base64.split(";base64,")
+                mime_type = header.split(":")[1]
+            
+            image_bytes = base64.b64decode(b64_data)
+            message_content.append({"mime_type": mime_type, "data": image_bytes})
+            message_content.append("O usuário anexou esta imagem. Se for um cupom fiscal ou recibo, leia-o, extraia o valor TOTAL pago, a data e a descrição (ex: 'Compras Atacadão') e USE a ferramenta add_expense_tool para salvá-lo imediatamente.")
+
+        response = chat.send_message(message_content)
         return response.text
     except Exception as e:
         return f"Erro ao processar com a IA ou salvar o dado. Tente novamente mais tarde. Detalhes: {str(e)}"

@@ -5,31 +5,57 @@ export default function Agent() {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: 'Olá! Sou seu Assistente Financeiro IA. 🤖\nPosso analisar seus gastos ou registrar novas despesas para você. Exemplo: "Gastei R$ 45 de Uber hoje" ou "Adicione uma despesa de R$ 120 no supermercado ontem". Como posso ajudar?'
+      content: 'Olá! Sou seu Assistente Financeiro IA. 🤖\nPosso analisar seus gastos ou registrar novas despesas para você. Exemplo: "Gastei R$ 45 de Uber hoje" ou "Adicione uma despesa de R$ 120 no supermercado ontem".\n\n📸 **Novidade:** Você também pode anexar a foto de um cupom fiscal e eu leio tudo para você!'
     }
   ]);
   const [input, setInput] = useState('');
+  const [selectedImage, setSelectedImage] = useState(null);
   const [loading, setLoading] = useState(false);
   const endRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, selectedImage]);
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setSelectedImage(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const sendMessage = async (presetText = null) => {
     const text = presetText || input;
-    if (!text.trim()) return;
+    if (!text.trim() && !selectedImage) return;
 
-    const newMsgs = [...messages, { role: 'user', content: text }];
+    // Create message for UI
+    const userMsgContent = [];
+    if (text) userMsgContent.push(text);
+    if (selectedImage) userMsgContent.push("[Imagem Anexada]");
+
+    const newMsgs = [...messages, { role: 'user', content: userMsgContent.join('\n') }];
     setMessages(newMsgs);
+    
+    const payload = { 
+        question: text || "Aqui está um comprovante/cupom.", 
+        image_base64: selectedImage 
+    };
+
     setInput('');
+    setSelectedImage(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setLoading(true);
 
     try {
-      const res = await api.post('/api/chat', { question: text });
+      const res = await api.post('/api/chat', payload);
       setMessages([...newMsgs, { role: 'assistant', content: res.data.answer }]);
     } catch (err) {
-      setMessages([...newMsgs, { role: 'assistant', content: 'Desculpe, ocorreu um erro ao processar sua solicitação.' }]);
+      setMessages([...newMsgs, { role: 'assistant', content: 'Desculpe, ocorreu um erro ao processar sua solicitação ou a imagem.' }]);
     } finally {
       setLoading(false);
     }
@@ -46,7 +72,7 @@ export default function Agent() {
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', maxWidth: '800px', margin: '0 auto' }}>
       <div className="page-header" style={{ marginBottom: '16px' }}>
         <h1>🤖 Assistente IA</h1>
-        <p>Converse com a inteligência artificial para gerenciar suas finanças.</p>
+        <p>Converse com a inteligência artificial para gerenciar suas finanças e ler cupons fiscais.</p>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-elevated)', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', border: '1px solid var(--border)' }}>
@@ -86,17 +112,42 @@ export default function Agent() {
             </button>
           ))}
         </div>
+
+        {selectedImage && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: 8, background: 'var(--bg-elevated)', borderRadius: 8, width: 'fit-content' }}>
+                <img src={selectedImage} alt="Preview" style={{ height: 40, borderRadius: 4 }} />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Imagem pronta para envio</span>
+                <button className="btn btn-sm" style={{ padding: '2px 8px' }} onClick={() => { setSelectedImage(null); fileInputRef.current.value=''; }}>❌</button>
+            </div>
+        )}
+
         <div style={{ display: 'flex', gap: '10px' }}>
+          <input 
+            type="file" 
+            accept="image/*" 
+            style={{ display: 'none' }} 
+            ref={fileInputRef} 
+            onChange={handleImageChange}
+          />
+          <button 
+            className="btn btn-secondary" 
+            style={{ borderRadius: '24px', padding: '0 16px', fontSize: 20 }} 
+            onClick={() => fileInputRef.current?.click()}
+            title="Anexar Cupom Fiscal"
+          >
+            📸
+          </button>
+          
           <input 
             className="form-control" 
             style={{ flex: 1, borderRadius: '24px', padding: '0 20px' }}
             value={input} 
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && sendMessage()}
-            placeholder="Digite sua mensagem (ex: Gastei R$ 30 na padaria)..." 
+            placeholder="Digite sua mensagem ou anexe um cupom fiscal..." 
             disabled={loading}
           />
-          <button className="btn btn-primary" style={{ borderRadius: '24px', padding: '0 24px' }} onClick={() => sendMessage()} disabled={loading || !input.trim()}>
+          <button className="btn btn-primary" style={{ borderRadius: '24px', padding: '0 24px' }} onClick={() => sendMessage()} disabled={loading || (!input.trim() && !selectedImage)}>
             Enviar
           </button>
         </div>
