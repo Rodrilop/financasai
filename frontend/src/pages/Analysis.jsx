@@ -128,24 +128,6 @@ export default function Analysis() {
         }
       </div>
 
-      {/* Chat */}
-      <div className="chart-card">
-        <div className="chart-title">💬 Pergunte sobre suas finanças</div>
-        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-          <input className="form-control" style={{ flex: 1 }}
-            value={chat} onChange={e => setChat(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && sendChat()}
-            placeholder="Ex: Quanto gastei em alimentação? O que posso cortar?" />
-          <button className="btn btn-primary" onClick={sendChat} disabled={chatLoading}>
-            {chatLoading ? '⏳' : 'Perguntar'}
-          </button>
-        </div>
-        {chatAns && (
-          <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '14px 16px', fontSize: 13, color: 'var(--text-subtle)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
-            {chatAns}
-          </div>
-        )}
-      </div>
     </div>
   )
 }

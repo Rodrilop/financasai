@@ -4,6 +4,7 @@ import api from './api/client'
 import Dashboard from './pages/Dashboard'
 import Expenses from './pages/Expenses'
 import Analysis from './pages/Analysis'
+import Agent from './pages/Agent'
 import Investments from './pages/Investments'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
@@ -13,9 +14,10 @@ import { AuthProvider, AuthContext } from './contexts/AuthContext'
 const NAV = [
   { to: '/',            icon: '📊', label: 'Dashboard' },
   { to: '/expenses',    icon: '📋', label: 'Despesas' },
-  { to: '/analysis',   icon: '📈', label: 'Análise' },
+  { to: '/analysis',    icon: '📈', label: 'Análise' },
+  { to: '/agent',       icon: '🤖', label: 'Assistente IA' },
   { to: '/investments', icon: '🌱', label: 'Investimentos' },
-  { to: '/settings',   icon: '⚙️', label: 'Configurações' },
+  { to: '/settings',    icon: '⚙️', label: 'Configurações' },
 ]
 
 function Sidebar({ month }) {
@@ -90,6 +92,7 @@ export default function App() {
             <Route path="/"            element={<Dashboard />} />
             <Route path="/expenses"    element={<Expenses />} />
             <Route path="/analysis"    element={<Analysis />} />
+            <Route path="/agent"       element={<Agent />} />
             <Route path="/investments" element={<Investments />} />
             <Route path="/settings"    element={<Settings />} />
           </Route>

@@ -77,11 +77,17 @@ def chat_with_ai(question: str, analysis: dict, user_id: int) -> str:
             except Exception as e:
                 return {"status": "error", "message": str(e)}
 
-        instruction = """Você é o Assistente Financeiro IA Pessoal (Consultor Autônomo) do app FinançasAI.
-Você tem acesso aos dados do usuário e ferramentas (tools). 
+        from datetime import datetime
+        hoje = datetime.now().strftime("%Y-%m-%d")
+
+        instruction = f"""Você é o Assistente Financeiro IA Pessoal (Consultor Autônomo) do app FinançasAI.
+Hoje é dia {hoje}. Você tem acesso aos dados do usuário e ferramentas (tools). 
 SEMPRE que o usuário informar que fez um gasto/compra (ex: "gastei X", "comprei Y", "adicione uma despesa de Z"), você DEVE usar a ferramenta 'add_expense_tool' para salvar a despesa.
+Se a data não for especificada, ou o usuário usar termos como "hoje" ou "agora", utilize obrigatoriamente a data de hoje ({hoje}).
+Se o usuário usar termos como "ontem", calcule a data correta baseada no dia de hoje ({hoje}).
+Se for impossível deduzir a data, assuma a data de hoje para não travar o fluxo.
 Não diga apenas como ele pode fazer isso, FAÇA você mesmo pela ferramenta.
-Após adicionar, confirme gentilmente a ação. Seja conciso e amigável."""
+Após adicionar, confirme gentilmente a ação e informe a data que registrou. Seja conciso e amigável."""
 
         model = genai.GenerativeModel(
             model_name=model_name,
@@ -92,6 +98,7 @@ Após adicionar, confirme gentilmente a ação. Seja conciso e amigável."""
         chat = model.start_chat(enable_automatic_function_calling=True)
         
         context = f"""[Contexto Financeiro Atual]
+- Hoje: {hoje}
 - Renda: R$ {analysis.get('total_income',0):.2f}
 - Gastos Totais: R$ {analysis.get('total_expenses',0):.2f}
 - Saldo Livre: R$ {analysis.get('balance',0):.2f}
