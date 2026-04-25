@@ -169,6 +169,19 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
             except Exception as e:
                 return {"status": "error", "message": str(e)}
 
+        def search_web_tool(query: str) -> dict:
+            """Realiza uma busca em tempo real na internet (DuckDuckGo). USE SEMPRE que o usuário perguntar sobre notícias recentes de empresas, cotações de hoje da bolsa de valores, taxa Selic, inflação ou conselhos de compra/venda de ações."""
+            try:
+                from duckduckgo_search import DDGS
+                results = DDGS().text(query, max_results=3)
+                if not results:
+                    return {"status": "error", "message": "Nenhum resultado encontrado."}
+                
+                search_context = "\n".join([f"- {r['title']}: {r['body']} (Fonte: {r['href']})" for r in results])
+                return {"status": "success", "results": search_context}
+            except Exception as e:
+                return {"status": "error", "message": f"Erro na busca web: {str(e)}"}
+
         from datetime import datetime
         import base64
         hoje = datetime.now().strftime("%Y-%m-%d")
@@ -177,15 +190,15 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
 Hoje é dia {hoje}. Você tem acesso aos dados do usuário e dezenas de ferramentas (tools) para CONTROLE TOTAL do aplicativo.
 SEMPRE que o usuário informar uma intenção (adicionar gasto, mudar salário, adicionar renda extra, alterar perfil, mudar metas, comprar ações/ativos) ou ENVIAR UMA IMAGEM de recibo/nota fiscal, você DEVE obrigatoriamente usar a ferramenta correspondente para executar a ação.
 Não diga "vá nas configurações e mude", FAÇA você mesmo utilizando suas tools.
-Se a data de um gasto não for especificada, ou o usuário usar termos como "hoje" ou "agora", utilize obrigatoriamente a data de hoje ({hoje}).
-Se o usuário pedir para executar mais de uma ação na mesma frase (ex: "mude meu salário para X e adicione uma despesa de Y"), você deve usar AS DUAS ferramentas consecutivamente ou na mesma chamada.
+IMPORTANTE: Se o usuário perguntar sobre o cenário macroeconômico atual (Selic, Inflação) ou pedir conselhos se deve comprar/vender uma Ação/FII específico hoje, VOCÊ DEVE usar a ferramenta 'search_web_tool' ANTES de responder para buscar notícias atualizadas na internet.
+Se a data de um gasto não for especificada, utilize a data de hoje ({hoje}).
 Após executar as ações, confirme gentilmente o que foi feito. Seja conciso, humano e amigável."""
 
         tools_list = [
             add_expense_tool, update_salary_tool, add_extra_income_tool, 
             update_investment_goal_tool, update_emergency_goal_tool, 
             update_budget_rules_tool, update_investor_profile_tool,
-            add_portfolio_asset_tool
+            add_portfolio_asset_tool, search_web_tool
         ]
 
         model = genai.GenerativeModel(
