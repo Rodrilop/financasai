@@ -13,3 +13,4 @@ pyjwt==2.8.0
 libsql-experimental==0.0.55
 pytest-cov==4.1.0
 duckduckgo-search==6.3.2
+apscheduler==3.10.4

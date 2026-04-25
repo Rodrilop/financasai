@@ -9,6 +9,7 @@ import Investments from './pages/Investments'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import Notifications from './pages/Notifications'
 import { AuthProvider, AuthContext } from './contexts/AuthContext'
 
 const NAV = [
@@ -16,6 +17,7 @@ const NAV = [
   { to: '/expenses',    icon: '📋', label: 'Despesas' },
   { to: '/analysis',    icon: '📈', label: 'Análise' },
   { to: '/agent',       icon: '🤖', label: 'Assistente IA' },
+  { to: '/notifications', icon: '🔔', label: 'Notificações' },
   { to: '/investments', icon: '🌱', label: 'Investimentos' },
   { to: '/settings',    icon: '⚙️', label: 'Configurações' },
 ]
@@ -93,6 +95,7 @@ export default function App() {
             <Route path="/expenses"    element={<Expenses />} />
             <Route path="/analysis"    element={<Analysis />} />
             <Route path="/agent"       element={<Agent />} />
+            <Route path="/notifications" element={<Notifications />} />
             <Route path="/investments" element={<Investments />} />
             <Route path="/settings"    element={<Settings />} />
           </Route>

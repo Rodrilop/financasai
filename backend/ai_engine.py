@@ -235,3 +235,53 @@ O usuário diz: {question}"""
         return response.text
     except Exception as e:
         return f"Erro ao processar com a IA ou salvar o dado. Tente novamente mais tarde. Detalhes: {str(e)}"
+
+def generate_proactive_alert(user_id: int, analysis: dict) -> dict:
+    """Analisador autônomo de dados para gerar alertas proativos."""
+    try:
+        from datetime import datetime
+        hoje = datetime.now().strftime("%Y-%m-%d")
+        
+        income = analysis.get("total_income", 0)
+        expenses = analysis.get("total_expenses", 0)
+        balance = analysis.get("balance", 0)
+        alerts = analysis.get("alerts", [])
+        alert_msgs = " | ".join(a["message"] for a in alerts)
+        
+        # If there is nothing to say, return early to save tokens.
+        if income == 0 and expenses == 0:
+            return None
+
+        prompt = f"""Você é um sistema de monitoramento financeiro pró-ativo. Hoje é dia {hoje}.
+Analise os dados abaixo e veja se o usuário precisa de um alerta ou dica.
+Se estiver tudo bem e não houver novidades, responda APENAS com a palavra 'IGNORE'.
+Caso haja algo relevante (muito dinheiro sobrando na conta, gastos estourando, ou alertas do sistema: '{alert_msgs}'), crie uma notificação curta e amigável.
+Formato da resposta (se houver alerta):
+Título: [Título Curto e Engajador]
+Mensagem: [1 a 2 frases com a dica ou alerta prático]
+
+Dados:
+- Renda: R$ {income:.2f}
+- Gastos: R$ {expenses:.2f}
+- Saldo Livre Atual: R$ {balance:.2f}
+"""
+        model = genai.GenerativeModel(model_name)
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+        
+        if text.upper() == 'IGNORE' or "IGNORE" in text.upper():
+            return None
+            
+        # Parse Title and Message
+        title = "Nova dica financeira!"
+        message = text
+        if "Título:" in text and "Mensagem:" in text:
+            parts = text.split("Mensagem:")
+            title = parts[0].replace("Título:", "").strip()
+            message = parts[1].strip()
+            
+        return {"title": title, "message": message}
+    except Exception as e:
+        print(f"Erro no Agente Proativo: {e}")
+        return None
+

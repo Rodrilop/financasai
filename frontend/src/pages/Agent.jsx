@@ -71,8 +71,26 @@ export default function Agent() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', maxWidth: '800px', margin: '0 auto' }}>
       <div className="page-header" style={{ marginBottom: '16px' }}>
-        <h1>🤖 Assistente IA</h1>
-        <p>Converse com a inteligência artificial para gerenciar suas finanças e ler cupons fiscais.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <div>
+            <h1>🤖 Assistente IA</h1>
+            <p>Converse com a inteligência artificial para gerenciar suas finanças e ler cupons fiscais.</p>
+          </div>
+          <button 
+            className="btn btn-secondary btn-sm" 
+            onClick={async () => {
+              setLoading(true);
+              try {
+                const res = await api.post('/api/agent/trigger');
+                alert(res.data.alert ? 'Dica Gerada! Verifique o sininho 🔔' : 'A IA analisou seus dados e achou que está tudo ok por enquanto.');
+              } catch(e) { alert('Erro ao disparar motor.'); }
+              setLoading(false);
+            }}
+            disabled={loading}
+          >
+            ⚡ Testar Motor Proativo
+          </button>
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-elevated)', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', border: '1px solid var(--border)' }}>

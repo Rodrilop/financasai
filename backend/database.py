@@ -87,7 +87,7 @@ def _migrate(conn):
     Uses PRAGMA table_info to check column existence before ALTER TABLE,
     avoiding silent failures from the try/except approach.
     """
-    tables = ["settings", "income", "expenses", "portfolio"]
+    tables = ["settings", "income", "expenses", "portfolio", "notifications"]
     for table in tables:
         if not _column_exists(conn, table, "user_id"):
             logger.info(f"Migrating table '{table}': adding user_id column")
@@ -176,6 +176,16 @@ def init_db():
             ticker TEXT NOT NULL,
             quantity REAL NOT NULL,
             average_price REAL NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            is_read INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)

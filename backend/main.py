@@ -15,7 +15,8 @@ if not logger.handlers:
 from database import get_connection, init_db, ensure_user_settings, get_schema_info
 from analyzer import compute_analysis, get_settings, get_all_income
 from market import get_market_data, get_allocation, get_user_portfolio_data
-from ai_engine import generate_recommendations, chat_with_ai
+from ai_engine import generate_recommendations, chat_with_ai, generate_proactive_alert
+from apscheduler.schedulers.background import BackgroundScheduler
 from auth import get_password_hash, verify_password, create_access_token, get_current_user
 
 app = FastAPI(title="FinançasAI API")
@@ -29,9 +30,29 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Global Error: {exc}", exc_info=True)
     return JSONResponse(status_code=500, content={"detail": "Erro interno no servidor."})
 
+def run_proactive_agent():
+    """Background task to generate autonomous alerts for all users."""
+    conn = get_connection()
+    try:
+        users = conn.execute("SELECT DISTINCT user_id FROM settings").fetchall()
+        for row in users:
+            uid = row["user_id"]
+            analysis = compute_analysis(uid)
+            alert = generate_proactive_alert(uid, analysis)
+            if alert:
+                conn.execute("INSERT INTO notifications (user_id, title, message) VALUES (?,?,?)", (uid, alert["title"], alert["message"]))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Proactive Error: {e}")
+    finally:
+        conn.close()
+
 @app.on_event("startup")
 def startup():
     init_db()
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(run_proactive_agent, 'interval', hours=24)
+    scheduler.start()
 
 # ── Models ──────────────────────────────────────────────────────────────────
 
@@ -310,6 +331,36 @@ def delete_portfolio_item(item_id: int, user: dict = Depends(get_current_user)):
     conn.commit()
     conn.close()
     return {"status": "success"}
+
+# ── Notifications & Proactive Agent ───────────────────────────────────────────
+
+@app.get("/api/notifications")
+def get_notifications(user: dict = Depends(get_current_user)):
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 50", (user["id"],)).fetchall()
+    conn.close()
+    return [{"id": r["id"], "title": r["title"], "message": r["message"], "is_read": bool(r["is_read"]), "created_at": r["created_at"]} for r in rows]
+
+@app.put("/api/notifications/{notif_id}/read")
+def read_notification(notif_id: int, user: dict = Depends(get_current_user)):
+    conn = get_connection()
+    conn.execute("UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?", (notif_id, user["id"]))
+    conn.commit()
+    conn.close()
+    return {"status": "success"}
+
+@app.post("/api/agent/trigger")
+def trigger_agent(user: dict = Depends(get_current_user)):
+    """Manual trigger to generate proactive alert for current user (for testing)."""
+    analysis = compute_analysis(user["id"])
+    alert = generate_proactive_alert(user["id"], analysis)
+    if alert:
+        conn = get_connection()
+        conn.execute("INSERT INTO notifications (user_id, title, message) VALUES (?,?,?)", (user["id"], alert["title"], alert["message"]))
+        conn.commit()
+        conn.close()
+        return {"status": "success", "alert": alert}
+    return {"status": "success", "message": "Nenhuma dica necessária no momento."}
 
 @app.get("/health")
 def health():
