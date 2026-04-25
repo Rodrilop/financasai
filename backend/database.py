@@ -1,7 +1,10 @@
 import sqlite3
 import os
+import logging
 from pathlib import Path
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent / "financasai.db"
 TURSO_DB_URL = os.getenv("TURSO_DATABASE_URL", "")
@@ -62,34 +65,65 @@ def get_connection():
             proxy.row_factory = CustomRow
             return proxy
         except ImportError:
-            print("libsql-experimental is not installed. Falling back to local SQLite.")
+            logger.warning("libsql-experimental not installed. Falling back to local SQLite.")
 
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
+def _column_exists(conn, table: str, column: str) -> bool:
+    """Check if a column exists in a table using PRAGMA table_info."""
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return any(r["name"] == column for r in rows)
+    except Exception as e:
+        logger.error(f"Error checking column {column} in {table}: {e}")
+        return False
+
 def _migrate(conn):
-    """Add user_id column to existing tables if not present (safe migration)."""
-    migrations = [
-        "ALTER TABLE settings ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1",
-        "ALTER TABLE income ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1",
-        "ALTER TABLE expenses ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1",
-    ]
-    for sql in migrations:
+    """
+    Safely add user_id column to existing tables.
+    Uses PRAGMA table_info to check column existence before ALTER TABLE,
+    avoiding silent failures from the try/except approach.
+    """
+    tables = ["settings", "income", "expenses"]
+    for table in tables:
+        if not _column_exists(conn, table, "user_id"):
+            logger.info(f"Migrating table '{table}': adding user_id column")
+            try:
+                # Use DEFAULT 1 without NOT NULL — safer for libsql ALTER TABLE
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER DEFAULT 1")
+                conn.commit()
+                logger.info(f"  -> user_id column added to '{table}' successfully")
+            except Exception as e:
+                logger.error(f"  -> Failed to add user_id to '{table}': {e}")
+        else:
+            logger.info(f"Table '{table}' already has user_id column — skipping")
+
+def get_schema_info():
+    """Return schema info for diagnostics endpoint."""
+    conn = get_connection()
+    result = {}
+    for table in ["users", "settings", "income", "expenses"]:
         try:
-            conn.execute(sql)
-            conn.commit()
-        except Exception:
-            # Column already exists — safe to ignore
-            pass
+            cols = conn.execute(f"PRAGMA table_info({table})").fetchall()
+            count_row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+            count = count_row[0] if count_row else 0
+            result[table] = {
+                "columns": [r["name"] for r in cols],
+                "row_count": count,
+            }
+        except Exception as e:
+            result[table] = {"error": str(e)}
+    conn.close()
+    return result
 
 def init_db():
-    """Initialize the database by creating all required tables and default settings."""
+    """Initialize the database by creating all required tables."""
     conn = get_connection()
     c = conn.cursor()
 
-    # Tabela de Usuários (Auth)
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,11 +133,10 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
-
     c.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL DEFAULT 1,
+            user_id INTEGER DEFAULT 1,
             salary REAL DEFAULT 0,
             reference_month TEXT DEFAULT '',
             emergency_reserve_goal REAL DEFAULT 0,
@@ -117,7 +150,7 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS income (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL DEFAULT 1,
+            user_id INTEGER DEFAULT 1,
             name TEXT NOT NULL,
             amount REAL NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -126,7 +159,7 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL DEFAULT 1,
+            user_id INTEGER DEFAULT 1,
             description TEXT NOT NULL,
             amount REAL NOT NULL,
             category TEXT NOT NULL,
@@ -138,13 +171,15 @@ def init_db():
     """)
     conn.commit()
 
-    # Safe migration for existing databases (Turso)
+    # Run migration (adds user_id to pre-existing tables)
     _migrate(conn)
-
     conn.close()
 
 def ensure_user_settings(user_id: int):
-    """Create a default settings row for a new user if one doesn't exist."""
+    """Create a default settings row for a user if one doesn't exist."""
+    if user_id is None:
+        logger.error("ensure_user_settings called with user_id=None — skipping")
+        return
     conn = get_connection()
     row = conn.execute("SELECT id FROM settings WHERE user_id=?", (user_id,)).fetchone()
     if not row:
@@ -158,4 +193,5 @@ def ensure_user_settings(user_id: int):
             (user_id, month)
         )
         conn.commit()
+        logger.info(f"Created default settings for user_id={user_id}")
     conn.close()
