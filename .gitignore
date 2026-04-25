@@ -1,0 +1,29 @@
+# Banco de dados
+*.db
+*.sqlite
+*.sqlite3
+
+# Arquivos de ambiente
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Node.js
+node_modules/
+dist/
+build/
+.npm/
+
+# IDEs / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
