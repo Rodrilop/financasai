@@ -163,7 +163,7 @@ def read_expenses(user: str = Depends(get_current_user), month: Optional[str] = 
     if q:
         sql += " AND description LIKE ?"; params.append(f"%{q}%")
     sql += " ORDER BY date DESC"
-    rows = conn.execute(sql, params).fetchall()
+    rows = conn.execute(sql, tuple(params)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -201,7 +201,7 @@ def delete_expense(expense_id: int, user: str = Depends(get_current_user)):
 @app.post("/api/expenses/bulk-delete")
 def bulk_delete(data: BulkDeleteIn, user: str = Depends(get_current_user)):
     conn = get_connection()
-    conn.execute(f"DELETE FROM expenses WHERE id IN ({','.join('?'*len(data.ids))})", data.ids)
+    conn.execute(f"DELETE FROM expenses WHERE id IN ({','.join('?'*len(data.ids))})", tuple(data.ids))
     conn.commit(); conn.close()
     return {"deleted": len(data.ids)}
 
