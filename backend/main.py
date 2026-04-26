@@ -431,7 +431,8 @@ async def whatsapp_webhook(request: Request):
                 "apikey": evo_key
             }
             try:
-                requests.post(send_url, json=payload, headers=headers)
+                resp = requests.post(send_url, json=payload, headers=headers)
+                logger.info(f"Resposta da Evolution API: {resp.status_code} - {resp.text}")
             except Exception as e:
                 logger.error(f"Erro ao enviar resposta via Evolution: {e}")
 
