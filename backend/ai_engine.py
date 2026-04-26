@@ -44,7 +44,9 @@ Forneça:
 
 Seja direto, use linguagem simples e mencione valores reais quando relevante. Máximo 300 palavras."""
 
-        model = genai.GenerativeModel(model_name)
+        # Garante o prefixo models/
+        full_model_name = model_name if model_name.startswith("models/") else f"models/{model_name}"
+        model = genai.GenerativeModel(full_model_name)
         response = model.generate_content(prompt)
         
         return response.text
@@ -202,8 +204,11 @@ Após executar as ações, confirme gentilmente o que foi feito. Seja conciso, h
             add_portfolio_asset_tool, search_web_tool
         ]
 
+        # Garante o prefixo models/
+        full_model_name = model_name if model_name.startswith("models/") else f"models/{model_name}"
+        
         model = genai.GenerativeModel(
-            model_name=model_name,
+            model_name=full_model_name,
             tools=tools_list,
             system_instruction=instruction
         )
@@ -278,7 +283,8 @@ Dados:
 - Gastos: R$ {expenses:.2f}
 - Saldo Livre Atual: R$ {balance:.2f}
 """
-        model = genai.GenerativeModel(model_name)
+        full_model_name = model_name if model_name.startswith("models/") else f"models/{model_name}"
+        model = genai.GenerativeModel(full_model_name)
         response = model.generate_content(prompt)
         text = response.text.strip()
         
