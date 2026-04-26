@@ -421,8 +421,11 @@ async def whatsapp_webhook(request: Request, event: str = None):
         if evo_url and evo_key and evo_instance:
             import requests
             send_url = f"{evo_url}/message/sendText/{evo_instance}"
+            # Limpa o JID para enviar apenas o número (necessário para Evolution API v2)
+            clean_number = remote_jid.split("@")[0]
+            
             payload = {
-                "number": remote_jid,
+                "number": clean_number,
                 "text": answer,
                 "delay": 1200, # delay natural de digitação em ms
                 "linkPreview": True
