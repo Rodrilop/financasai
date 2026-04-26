@@ -15,7 +15,7 @@ try:
 except:
     print("DEBUG: Não foi possível ler a versão da biblioteca")
 
-model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+model_name = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 
 def generate_recommendations(analysis: dict) -> str:
     """Use Google Gemini to generate personalized financial recommendations."""
