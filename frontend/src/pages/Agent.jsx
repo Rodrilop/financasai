@@ -123,7 +123,7 @@ export default function Agent() {
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', maxWidth: '800px', margin: '0 auto' }}>
+    <div className="agent-container">
       <div className="page-header" style={{ marginBottom: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
           <div>
@@ -147,7 +147,7 @@ export default function Agent() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-elevated)', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', border: '1px solid var(--border)' }}>
+      <div className="chat-messages">
         {messages.map((m, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
             <div style={{
@@ -177,7 +177,7 @@ export default function Agent() {
       </div>
 
       <div style={{ marginTop: '16px' }}>
-        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '8px' }}>
+        <div className="suggestions-bar">
           {suggestions.map((s, i) => (
             <button key={i} className="btn btn-secondary btn-sm" style={{ whiteSpace: 'nowrap', borderRadius: '20px' }} onClick={() => sendMessage(s)}>
               {s}

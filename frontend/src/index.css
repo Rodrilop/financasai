@@ -299,6 +299,15 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .stocks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 
 .mobile-header { display: none; }
+.agent-container { display: flex; flex-direction: column; height: calc(100vh - 120px); maxWidth: 800px; margin: 0 auto; }
+
+@media (max-width: 768px) {
+  .agent-container { height: calc(100vh - 160px); }
+}
+
+.chat-messages { flex: 1; overflow-y: auto; background: var(--bg-elevated); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px; border: 1px solid var(--border); }
+.suggestions-bar { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px; scrollbar-width: none; }
+.suggestions-bar::-webkit-scrollbar { display: none; }
 
 @media (max-width: 900px) {
   .charts-grid { grid-template-columns: 1fr; }
@@ -329,7 +338,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   
   .main-content {
     padding: 16px;
-    padding-bottom: 80px;
+    padding-bottom: 100px;
   }
   
   .sidebar {
@@ -343,7 +352,10 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     border-top: 1px solid var(--border);
     z-index: 50;
     background: var(--bg-card);
+    overflow-x: auto;
+    scrollbar-width: none; /* Firefox */
   }
+  .sidebar::-webkit-scrollbar { display: none; } /* Chrome/Safari */
   .sidebar-logo, .sidebar-footer { display: none; }
   .sidebar-nav {
     flex-direction: row;
@@ -353,14 +365,15 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   }
   .nav-item {
     flex-direction: column;
-    gap: 4px;
-    padding: 6px;
-    font-size: 10px;
+    gap: 2px;
+    padding: 6px 4px;
+    font-size: 9px;
     justify-content: center;
     flex: 1;
+    min-width: 65px;
     text-align: center;
   }
-  .nav-item .icon { font-size: 20px; margin: 0 auto; }
+  .nav-item .icon { font-size: 18px; margin: 0 auto; }
   
   .table-card { overflow-x: auto; }
   table { min-width: 600px; }
