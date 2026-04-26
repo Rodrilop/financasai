@@ -5,7 +5,16 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 # Configurar o client do Google Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
+api_key = os.getenv("GEMINI_API_KEY", "")
+genai.configure(api_key=api_key)
+
+# Log para debug no Render
+try:
+    import google.generativeai as genai_lib
+    print(f"DEBUG: google-generativeai version: {genai_lib.__version__}")
+except:
+    print("DEBUG: Não foi possível ler a versão da biblioteca")
+
 model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 def generate_recommendations(analysis: dict) -> str:
