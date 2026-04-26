@@ -366,7 +366,8 @@ def trigger_agent(user: dict = Depends(get_current_user)):
 # ── WhatsApp Webhook ──────────────────────────────────────────────────────────
 
 @app.post("/api/webhook/whatsapp")
-async def whatsapp_webhook(request: Request):
+@app.post("/api/webhook/whatsapp/{event}")
+async def whatsapp_webhook(request: Request, event: str = None):
     """
     Endpoint híbrido para integração com WhatsApp:
     - Suporta Twilio (x-www-form-urlencoded)
