@@ -46,9 +46,16 @@ def get_market_data(ticker: str) -> str:
         
         if price:
             return f"Cotação de {name} ({ticker}): {currency} {price:.2f}"
-        return f"ALERTA: Não encontrei preço para '{ticker}' no Yahoo. Por favor, use a ferramenta 'search_web_tool' para buscar no Google agora."
+        
+        # --- FALLBACK AUTOMÁTICO DENTRO DA FERRAMENTA ---
+        print(f"Yahoo falhou para {ticker}, tentando busca web...")
+        web_res = search_web_tool(f"cotação {ticker} hoje valor")
+        return f"O Yahoo Finance não respondeu, mas encontrei estas informações na web: {web_res}"
+        
     except Exception as e:
-        return f"ERRO TÉCNICO: Falha ao acessar Yahoo para '{ticker}'. Use a ferramenta 'search_web_tool' como alternativa."
+        # Se até o erro técnico acontecer, tenta a web
+        web_res = search_web_tool(f"cotação {ticker} hoje")
+        return f"Erro no Yahoo, mas busquei na web: {web_res}"
 
 def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str = None, audio_base64: str = None) -> str:
     """Assistente com Loop de Raciocínio (Tenta várias ferramentas se necessário)."""
