@@ -1,265 +1,108 @@
 import os
 import json
 import base64
-from openai import OpenAI
+import google.generativeai as genai
+from groq import Groq
 from dotenv import load_dotenv
 from database import get_connection
 
 load_dotenv(override=True)
 
-# Configurar o client da NVIDIA (padrão OpenAI)
-api_key = os.getenv("NVIDIA_API_KEY", "")
-base_url = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-model_name = os.getenv("NVIDIA_MODEL", "deepseek-ai/deepseek-v4-pro")
+# --- INICIALIZAÇÃO DOS CLIENTES ---
+# Groq para Velocidade (Texto/Áudio)
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
 
-client = OpenAI(
-    base_url=base_url,
-    api_key=api_key
-)
+# Gemini para Precisão Visual (Imagens/Cupons)
+genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
 
 def generate_recommendations(analysis: dict) -> str:
-    """Use NVIDIA DeepSeek to generate personalized financial recommendations."""
+    """Usa o Groq (Llama 3) para gerar recomendações financeiras instantâneas."""
     try:
-        cat = analysis.get("category_totals", {})
-        prio = analysis.get("priority_totals", {})
         income = analysis.get("total_income", 0)
         expenses = analysis.get("total_expenses", 0)
         balance = analysis.get("balance", 0)
-        inv_sug = analysis.get("investment_suggested", 0)
-        profile = analysis.get("investor_profile", "moderado")
-        alerts = analysis.get("alerts", [])
-        alert_msgs = " | ".join(a["message"] for a in alerts)
+        
+        prompt = f"""Analise os dados: Renda R$ {income:.2f}, Gastos R$ {expenses:.2f}, Saldo R$ {balance:.2f}.
+        Dê 3 dicas curtas e práticas de economia para este usuário brasileiro. Seja direto e motivador."""
 
-        prompt = f"""Você é um especialista em educação financeira pessoal brasileiro. 
-Analise os dados financeiros abaixo e forneça recomendações práticas, claras e motivadoras em português.
-
-DADOS DO MÊS:
-- Renda total: R$ {income:.2f}
-- Total de gastos: R$ {expenses:.2f}
-- Saldo disponível: R$ {balance:.2f}
-- Valor sugerido para investir: R$ {inv_sug:.2f}
-- Perfil de investidor: {profile}
-- Gastos Essenciais: R$ {prio.get('Essencial',0):.2f}
-- Gastos Importantes: R$ {prio.get('Importante',0):.2f}  
-- Gastos Opcionais: R$ {prio.get('Opcional',0):.2f}
-- Categorias: {cat}
-- Alertas ativos: {alert_msgs if alert_msgs else 'Nenhum'}
-
-Forneça:
-1. Uma avaliação geral da saúde financeira (2 linhas)
-2. 3 a 5 recomendações práticas de corte de gastos (baseadas nos dados reais)
-3. Dica de investimento alinhada ao perfil ({profile})
-4. Uma frase motivacional de encerramento
-
-Seja direto, use linguagem simples e mencione valores reais quando relevante. Máximo 300 palavras."""
-
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": "Você é um especialista em educação financeira pessoal brasileiro."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=1,
-            top_p=0.95,
-            max_tokens=16384,
-            extra_body={"chat_template_kwargs": {"thinking": False}},
-            stream=True
+        chat_completion = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama3-8b-8192",
+            temperature=0.7
         )
-        
-        full_text = ""
-        for chunk in response:
-            if chunk.choices[0].delta.content:
-                full_text += chunk.choices[0].delta.content
-        
-        return full_text
+        return chat_completion.choices[0].message.content
     except Exception as e:
-        return f"⚠️ IA (NVIDIA DeepSeek) temporariamente indisponível.\n\nErro: {str(e)}"
+        print(f"Erro no Groq (Recommendations): {e}")
+        return "⚠️ IA temporariamente ocupada. Continue acompanhando seus gastos!"
 
 def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str = None, audio_base64: str = None) -> str:
-    """Answer user questions and execute tools using NVIDIA DeepSeek."""
+    """O Maestro: Roteia para Groq (Texto/Áudio) ou Gemini (Imagem)."""
     try:
         from datetime import datetime
         hoje = datetime.now().strftime("%Y-%m-%d")
 
-        # --- DEFINIÇÃO DE FERRAMENTAS ---
-        def add_expense_tool(description: str, amount: float, category: str, priority: str, date: str) -> dict:
-            try:
-                conn = get_connection()
-                conn.execute("INSERT INTO expenses (user_id, description, amount, category, priority, date) VALUES (?,?,?,?,?,?)",
-                             (user_id, description, amount, category, priority, date))
-                conn.commit()
-                conn.close()
-                return {"status": "success", "message": f"Despesa '{description}' de R$ {amount:.2f} adicionada."}
-            except Exception as e:
-                return {"status": "error", "message": str(e)}
-
-        def search_web_tool(query: str) -> dict:
-            try:
-                from duckduckgo_search import DDGS
-                results = DDGS().text(query, max_results=3)
-                search_context = "\n".join([f"- {r['title']}: {r['body']} (Fonte: {r['href']})" for r in results])
-                return {"status": "success", "results": search_context}
-            except Exception as e:
-                return {"status": "error", "message": str(e)}
-
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "add_expense_tool",
-                    "description": "Adiciona um novo gasto ou despesa no sistema.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "description": {"type": "string"},
-                            "amount": {"type": "number"},
-                            "category": {"type": "string"},
-                            "priority": {"type": "string", "enum": ["Essencial", "Importante", "Opcional"]},
-                            "date": {"type": "string", "description": "Formato YYYY-MM-DD"}
-                        },
-                        "required": ["description", "amount", "category", "priority", "date"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_web_tool",
-                    "description": "Busca notícias ou cotações financeiras na internet.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {"type": "string"}
-                        },
-                        "required": ["query"]
-                    }
-                }
-            }
-        ]
-
-        available_functions = {
-            "add_expense_tool": add_expense_tool,
-            "search_web_tool": search_web_tool
-        }
-
-        instruction = f"""Você é o Assistente Financeiro IA Pessoal (Consultor Autônomo) do app FinançasAI.
-Hoje é dia {hoje}. Você tem acesso aos dados do usuário e dezenas de ferramentas (tools) para CONTROLE TOTAL do aplicativo.
-SEMPRE que o usuário informar uma intenção (adicionar gasto, mudar salário, adicionar renda extra, alterar perfil, mudar metas, comprar ações/ativos) ou ENVIAR UMA IMAGEM de recibo/nota fiscal, você DEVE obrigatoriamente usar a ferramenta correspondente para executar a ação.
-Não diga "vá nas configurações e mude", FAÇA você mesmo utilizando suas tools.
-IMPORTANTE: Se o usuário perguntar sobre o cenário macroeconômico atual (Selic, Inflação) ou pedir conselhos se deve comprar/vender uma Ação/FII específico hoje, VOCÊ DEVE usar a ferramenta 'search_web_tool' ANTES de responder para buscar notícias atualizadas na internet.
-Se a data de um gasto não for especificada, utilize a data de hoje ({hoje}).
-Após executar as ações, confirme gentilmente o que foi feito. Seja conciso, humano e amigável."""
-        
-        context_text = f"""[Contexto] Renda: R$ {analysis.get('total_income',0):.2f} | Saldo: R$ {analysis.get('balance',0):.2f}
-Usuário: {question}"""
-
-        messages = [
-            {"role": "system", "content": instruction}
-        ]
-
-        user_content = []
-
+        # --- CASO 1: IMAGEM (GEMINI) ---
         if image_base64:
-            b64_data = image_base64
-            if "base64," in image_base64:
-                b64_data = image_base64.split("base64,")[1]
+            b64_data = image_base64.split("base64,")[1] if "base64," in image_base64 else image_base64
+            image_bytes = base64.b64decode(b64_data)
             
-            user_content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{b64_data}"}
-            })
-            user_content.append({
-                "type": "text", 
-                "text": "<image>\nO usuário anexou uma imagem acima (um cupom fiscal). Por favor, leia-o, extraia o valor total, a data e a descrição dos itens. Use as ferramentas necessárias para registrar esse gasto."
-            })
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content([
+                "Extraia o valor total, estabelecimento e data deste cupom fiscal. Se for um gasto, responda estritamente com: [GASTO: valor, descrição, categoria]",
+                {"mime_type": "image/jpeg", "data": image_bytes}
+            ])
+            
+            content = response.text
+            if "[GASTO:" in content:
+                return f"📸 Li seu cupom! {content}. Deseja que eu registre agora?"
+            
+            return content
 
-        user_content.append({"type": "text", "text": context_text})
-
+        # --- CASO 2: ÁUDIO (GROQ WHISPER + LLAMA) ---
         if audio_base64:
-            # Em uma implementação real com NVIDIA, usaríamos um modelo de STT aqui.
-            # Por enquanto, vamos sinalizar para o modelo que há uma intenção de voz.
-            user_content.append({
-                "type": "text",
-                "text": "[O usuário enviou uma mensagem de áudio que está sendo processada...]"
-            })
-
-        messages.append({"role": "user", "content": user_content})
-
-        # Seleção dinâmica de modelo: Se houver imagem, usa um modelo Vision.
-        current_model = model_name
-        if image_base64:
-            current_model = "meta/llama-3.2-11b-vision-instruct"
-
-        # Loop de execução de ferramentas (Máximo 2 rodadas)
-        for _ in range(2):
-            # Só enviamos 'thinking' se for o modelo DeepSeek
-            extra_params = {"extra_body": {"chat_template_kwargs": {"thinking": False}}} if current_model == model_name else {}
+            temp_audio = f"temp_audio_{user_id}.webm"
+            audio_data = audio_base64.split("base64,")[1] if "base64," in audio_base64 else audio_base64
+            with open(temp_audio, "wb") as f:
+                f.write(base64.b64decode(audio_data))
             
-            response = client.chat.completions.create(
-                model=current_model,
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",
-                temperature=1,
-                **extra_params
-            )
+            with open(temp_audio, "rb") as file:
+                transcription = groq_client.audio.transcriptions.create(
+                    file=(temp_audio, file.read()),
+                    model="whisper-large-v3",
+                )
+            os.remove(temp_audio)
+            question = transcription.text
+            print(f"🎙️ Transcrição Groq: {question}")
 
-            response_message = response.choices[0].message
-            tool_calls = response_message.tool_calls
-
-            if not tool_calls:
-                return response_message.content
-
-            messages.append(response_message)
-            for tool_call in tool_calls:
-                function_name = tool_call.function.name
-                function_to_call = available_functions[function_name]
-                function_args = json.loads(tool_call.function.arguments)
-                function_response = function_to_call(**function_args)
-
-                messages.append({
-                    "tool_call_id": tool_call.id,
-                    "role": "tool",
-                    "name": function_name,
-                    "content": json.dumps(function_response),
-                })
+        # --- CASO 3: TEXTO (GROQ LLAMA 3) ---
+        instruction = f"Você é o assistente do FinançasAI. Hoje é {hoje}. Seja conciso. Se o usuário informar um gasto, identifique o valor e descrição."
         
-        # Resposta final após ferramentas
-        final_response = client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            extra_body={"chat_template_kwargs": {"thinking": False}}
+        response = groq_client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": instruction},
+                {"role": "user", "content": f"Dados: Renda R$ {analysis.get('total_income',0):.2f}. Usuário: {question}"}
+            ],
+            model="llama3-70b-8192",
+            temperature=0.5
         )
-        return final_response.choices[0].message.content
+        
+        return response.choices[0].message.content
 
     except Exception as e:
-        return f"Erro ao processar com a IA NVIDIA DeepSeek. Detalhes: {str(e)}"
+        return f"❌ Erro no Maestro IA: {str(e)}"
 
 def generate_proactive_alert(user_id: int, analysis: dict) -> dict:
-    """Analisador autônomo de dados usando DeepSeek."""
+    """Analisador autônomo usando Groq (Llama 3)."""
     try:
         income = analysis.get("total_income", 0)
         expenses = analysis.get("total_expenses", 0)
-        if income == 0 and expenses == 0: return None
+        
+        prompt = f"Renda: {income}, Gastos: {expenses}. Crie uma dica financeira curta de 10 palavras."
 
-        prompt = f"Analise: Renda R$ {income:.2f}, Gastos R$ {expenses:.2f}. Se houver risco, crie um alerta curto com Título e Mensagem. Se estiver ok, responda 'IGNORE'."
-
-        response = client.chat.completions.create(
-            model=model_name,
+        response = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            temperature=1,
-            extra_body={"chat_template_kwargs": {"thinking": False}},
-            stream=True
+            model="llama3-8b-8192"
         )
-        
-        text = ""
-        for chunk in response:
-            if chunk.choices[0].delta.content:
-                text += chunk.choices[0].delta.content
-        
-        text = text.strip()
-        if "IGNORE" in text.upper(): return None
-            
-        return {"title": "Dica Financeira", "message": text}
-    except Exception as e:
+        return {"title": "Insight Rápido", "message": response.choices[0].message.content}
+    except:
         return None
