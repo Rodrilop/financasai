@@ -129,12 +129,12 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                 "type": "function",
                 "function": {
                     "name": "add_expense",
-                    "description": "Registra um gasto no banco de dados.",
+                    "description": "Registra um gasto.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "desc": {"type": "string"}, "val": {"type": "number"},
-                            "cat": {"type": "string"}, "data": {"type": "string", "description": "YYYY-MM-DD"}
+                            "cat": {"type": "string"}
                         },
                         "required": ["desc", "val", "cat"]
                     }
@@ -143,19 +143,8 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
             {
                 "type": "function",
                 "function": {
-                    "name": "delete_expense",
-                    "description": "Deleta um gasto pelo ID.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"id": {"type": "integer"}}, "required": ["id"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
                     "name": "update_salary",
-                    "description": "Atualiza a renda mensal principal.",
+                    "description": "Atualiza a renda mensal.",
                     "parameters": {
                         "type": "object",
                         "properties": {"val": {"type": "number"}}, "required": ["val"]
@@ -165,37 +154,8 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
             {
                 "type": "function",
                 "function": {
-                    "name": "add_portfolio",
-                    "description": "Adiciona Ação/FII à carteira.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "tk": {"type": "string", "description": "Ticker (ex: PETR4)"},
-                            "qtd": {"type": "number"}, "prc": {"type": "number"}
-                        },
-                        "required": ["tk", "qtd", "prc"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "update_settings",
-                    "description": "Atualiza metas (reserva, investimentos) ou perfil (conservador/moderado/arrojado).",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "meta_reserva": {"type": "number"}, "meta_invest": {"type": "number"},
-                            "perfil": {"type": "string", "enum": ["conservador", "moderado", "arrojado"]}
-                        }
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "market_search",
-                    "description": "Consulta cotações ou notícias na internet.",
+                    "name": "market_info",
+                    "description": "Consulta cotações (Dólar, Selic, Ações).",
                     "parameters": {
                         "type": "object",
                         "properties": {"q": {"type": "string"}}, "required": ["q"]
@@ -204,15 +164,13 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
             }
         ]
 
-        instruction = f"""Você é o Assistente Supremo do FinançasAI. 
-        DADOS ATUAIS (USE PARA RESPONDER): Renda R$ {analysis.get('total_income',0):.2f}, Gastos R$ {analysis.get('total_expenses',0):.2f}.
-        
-        REGRAS:
-        - Se o usuário disser que o salário 'aumentou X', some X à renda atual e use 'update_salary'.
-        - Se ele quiser investir, use 'add_portfolio'.
-        - Se quiser apagar algo, use 'delete_expense'.
-        - Use 'market_search' para cotações ou notícias.
-        - Responda amigavelmente após realizar a ação.
+        instruction = f"""Você é o Assistente Financeiro. Hoje é {hoje}.
+        Renda Atual: R$ {analysis.get('total_income',0):.2f}.
+
+        REGRAS OBRIGATÓRIAS:
+        1. Para Dólar, Selic ou Ações, USE 'market_info'.
+        2. Para aumentos de salário, calcule (Renda Atual + aumento) e use 'update_salary'.
+        3. SEMPRE use o formato JSON nativo para ferramentas. NÃO use tags <function>.
         """
 
         messages = [{"role": "system", "content": instruction}, {"role": "user", "content": question}]
@@ -221,7 +179,7 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
         for _ in range(3):
             response = groq_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=messages, tools=tools, tool_choice="auto", temperature=0.1
+                messages=messages, tools=tools, tool_choice="auto", temperature=0
             )
             msg = response.choices[0].message
             if not msg.tool_calls: return msg.content
@@ -230,30 +188,19 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
             for tool in msg.tool_calls:
                 args = json.loads(tool.function.arguments)
                 name = tool.function.name
-                res = "Operação concluída."
+                res = "OK."
                 
                 try:
                     if name == "add_expense":
                         db_exec("INSERT INTO expenses (user_id, description, amount, category, priority, date) VALUES (?,?,?,?,?,?)",
-                               (user_id, args["desc"], args["val"], args["cat"], "Importante", args.get("data", hoje)))
-                        res = f"Gasto de R$ {args['val']} em '{args['desc']}' registrado."
-                    elif name == "delete_expense":
-                        db_exec("DELETE FROM expenses WHERE id=? AND user_id=?", (args["id"], user_id))
-                        res = f"Gasto ID {args['id']} removido."
+                               (user_id, args["desc"], args["val"], args["cat"], "Importante", hoje))
+                        res = f"Gasto registrado."
                     elif name == "update_salary":
                         db_exec("UPDATE users SET salary = ? WHERE id = ?", (args["val"], user_id))
-                        res = f"Renda atualizada para R$ {args['val']}."
-                    elif name == "add_portfolio":
-                        db_exec("INSERT INTO portfolio (user_id, ticker, quantity, average_price) VALUES (?,?,?,?)",
-                               (user_id, args["tk"].upper(), args["qtd"], args["prc"]))
-                        res = f"Ativo {args['tk']} adicionado à carteira."
-                    elif name == "update_settings":
-                        if "perfil" in args: db_exec("UPDATE settings SET investor_profile=? WHERE user_id=?", (args["perfil"], user_id))
-                        if "meta_reserva" in args: db_exec("UPDATE settings SET emergency_reserve_goal=? WHERE user_id=?", (args["meta_reserva"], user_id))
-                        res = "Configurações atualizadas."
-                    elif name == "market_search":
+                        res = f"Renda atualizada."
+                    elif name == "market_info":
                         res = get_market_data_tool(args["q"])
-                except Exception as e: res = f"Erro na ferramenta: {str(e)}"
+                except Exception as e: res = f"Erro: {str(e)}"
 
                 messages.append({"tool_call_id": tool.id, "role": "tool", "name": name, "content": res})
         
