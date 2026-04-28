@@ -174,6 +174,14 @@ Usuário: {question}"""
                 "text": "O usuário anexou uma imagem (provavelmente um cupom fiscal). Leia-o e extraia o valor, data e descrição."
             })
 
+        if audio_base64:
+            # Em uma implementação real com NVIDIA, usaríamos um modelo de STT aqui.
+            # Por enquanto, vamos sinalizar para o modelo que há uma intenção de voz.
+            user_content.append({
+                "type": "text",
+                "text": "[O usuário enviou uma mensagem de áudio que está sendo processada...]"
+            })
+
         messages.append({"role": "user", "content": user_content})
 
         # Loop de execução de ferramentas (Máximo 2 rodadas)

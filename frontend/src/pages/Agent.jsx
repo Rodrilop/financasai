@@ -197,6 +197,7 @@ export default function Agent() {
           <input 
             type="file" 
             accept="image/*" 
+            capture="environment"
             style={{ display: 'none' }} 
             ref={fileInputRef} 
             onChange={handleImageChange}
