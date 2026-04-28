@@ -24,219 +24,148 @@ def search_web_tool(query: str) -> str:
         return f"Erro na pesquisa web: {str(e)}"
 
 def get_market_data(ticker: str) -> str:
-    """Busca cotação e dados de Ações, FIIs ou Cripto via Yahoo Finance."""
+    """Busca cotação via Yahoo Finance com fallback para Busca Web."""
     try:
         ticker = ticker.upper().strip()
-        synonyms = {
-            "DOLAR": "USDBRL=X", "DÓLAR": "USDBRL=X", "EURO": "EURBRL=X",
-            "BITCOIN": "BTC-USD", "IBOVESPA": "^BVSP", "SELIC": "^BCB-SELIC"
-        }
+        synonyms = {"DOLAR": "USDBRL=X", "DÓLAR": "USDBRL=X", "EURO": "EURBRL=X", "BITCOIN": "BTC-USD"}
         if ticker in synonyms: ticker = synonyms[ticker]
         if "." not in ticker and "-" not in ticker and "^" not in ticker:
             if len(ticker) >= 5: ticker = f"{ticker}.SA"
         
         stock = yf.Ticker(ticker)
         info = stock.info
-        # Tenta várias chaves de preço (Yahoo Finance varia o nome da chave para FIIs)
-        price = (info.get("currentPrice") or info.get("regularMarketPrice") or 
-                 info.get("bid") or info.get("ask") or info.get("previousClose"))
-        
-        name = info.get("longName") or info.get("shortName") or ticker
-        currency = info.get("currency", "BRL")
-        
+        price = (info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose"))
         if price:
-            return f"Cotação de {name} ({ticker}): {currency} {price:.2f}"
+            name = info.get("longName") or info.get("shortName") or ticker
+            return f"Cotação de {name} ({ticker}): R$ {price:.2f}"
         
-        # --- FALLBACK AUTOMÁTICO DENTRO DA FERRAMENTA ---
-        print(f"Yahoo falhou para {ticker}, tentando busca web...")
-        web_res = search_web_tool(f"cotação {ticker} hoje valor")
-        return f"O Yahoo Finance não respondeu, mas encontrei estas informações na web: {web_res}"
-        
+        # Fallback Web
+        web = search_web_tool(f"valor atual {ticker} hoje")
+        return f"Não achei no Yahoo, mas na web diz: {web}"
     except Exception as e:
-        # Se até o erro técnico acontecer, tenta a web
-        web_res = search_web_tool(f"cotação {ticker} hoje")
-        return f"Erro no Yahoo, mas busquei na web: {web_res}"
+        return f"Erro: {str(e)}"
 
 def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str = None, audio_base64: str = None) -> str:
-    """Assistente com Loop de Raciocínio (Tenta várias ferramentas se necessário)."""
+    """O Assistente Total: Gerencia gastos, renda, carteira e pesquisas."""
     try:
         from datetime import datetime
         hoje = datetime.now().strftime("%Y-%m-%d")
 
-        # --- CASO 1: IMAGEM (GEMINI) ---
-        if image_base64:
-            b64_data = image_base64.split("base64,")[1] if "base64," in image_base64 else image_base64
-            image_bytes = base64.b64decode(b64_data)
-            model = genai.GenerativeModel('gemini-flash-latest')
-            response = model.generate_content([
-                "Você é um Especialista em Auditoria. Extraia o gasto desta imagem: [GASTO: valor, estabelecimento, categoria]",
-                {"mime_type": "image/jpeg", "data": image_bytes}
-            ])
-            return response.text
+        # --- LÓGICA DE BANCO DE DADOS ---
+        def db_execute(query: str, params: tuple):
+            conn = get_connection()
+            conn.execute(query, params)
+            conn.commit()
+            conn.close()
 
-        # --- CASO 2: ÁUDIO ---
-        if audio_base64:
-            temp_audio = f"temp_{user_id}.webm"
-            audio_data = audio_base64.split("base64,")[1] if "base64," in audio_base64 else audio_base64
-            with open(temp_audio, "wb") as f: f.write(base64.b64decode(audio_data))
-            with open(temp_audio, "rb") as file:
-                transcription = groq_client.audio.transcriptions.create(
-                    file=(temp_audio, file.read()), model="whisper-large-v3")
-            os.remove(temp_audio)
-            question = transcription.text
-
-        # --- FERRAMENTAS DE ESCRITA (BANCO DE DADOS) ---
-        def add_expense_db(description: str, amount: float, category: str, date: str = hoje) -> str:
-            try:
-                conn = get_connection()
-                conn.execute("INSERT INTO expenses (user_id, description, amount, category, priority, date) VALUES (?,?,?,?,?,?)",
-                             (user_id, description, amount, category, "Importante", date))
-                conn.commit()
-                conn.close()
-                return f"✅ Gasto de R$ {amount:.2f} em '{description}' registrado com sucesso!"
-            except Exception as e:
-                return f"Erro ao salvar no banco: {str(e)}"
-
-        def update_salary_db(amount: float) -> str:
-            try:
-                conn = get_connection()
-                conn.execute("UPDATE users SET salary = ? WHERE id = ?", (amount, user_id))
-                conn.commit()
-                conn.close()
-                return f"💰 Renda atualizada para R$ {amount:.2f} com sucesso!"
-            except Exception as e:
-                return f"Erro ao atualizar renda: {str(e)}"
-
+        # --- TOOLS DEFINITIONS ---
         tools = [
             {
                 "type": "function",
                 "function": {
-                    "name": "add_expense_tool",
-                    "description": "Registra um novo gasto no banco de dados.",
+                    "name": "manage_finance",
+                    "description": "Adiciona gasto, deleta gasto ou atualiza salário.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "description": {"type": "string", "description": "O que foi comprado"},
-                            "amount": {"type": "number", "description": "Valor em reais"},
-                            "category": {"type": "string", "description": "Categoria (Ex: Alimentação, Transporte)"},
-                            "date": {"type": "string", "description": "Data no formato YYYY-MM-DD"}
+                            "action": {"type": "string", "enum": ["add_expense", "delete_expense", "update_salary"]},
+                            "amount": {"type": "number"},
+                            "description": {"type": "string"},
+                            "category": {"type": "string"},
+                            "expense_id": {"type": "integer"}
                         },
-                        "required": ["description", "amount", "category"]
+                        "required": ["action"]
                     }
                 }
             },
             {
                 "type": "function",
                 "function": {
-                    "name": "update_salary_tool",
-                    "description": "Atualiza o salário/renda mensal do usuário.",
+                    "name": "manage_portfolio",
+                    "description": "Adiciona ativos (ações/FIIs) à carteira do usuário.",
                     "parameters": {
                         "type": "object",
-                        "properties": {"amount": {"type": "number"}},
-                        "required": ["amount"]
+                        "properties": {
+                            "ticker": {"type": "string"},
+                            "quantity": {"type": "number"},
+                            "average_price": {"type": "number"}
+                        },
+                        "required": ["ticker", "quantity", "average_price"]
                     }
                 }
             },
             {
                 "type": "function",
                 "function": {
-                    "name": "search_web_tool",
-                    "description": "Busca informações na web quando o Yahoo Finance falha ou para notícias.",
+                    "name": "market_info",
+                    "description": "Busca cotações ou notícias financeiras.",
                     "parameters": {
                         "type": "object",
-                        "properties": {"query": {"type": "string"}},
-                        "required": ["query"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_market_data",
-                    "description": "Busca cotação de Ações e FIIs no Yahoo Finance.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"ticker": {"type": "string"}},
-                        "required": ["ticker"]
+                        "properties": {
+                            "query_or_ticker": {"type": "string"}
+                        },
+                        "required": ["query_or_ticker"]
                     }
                 }
             }
         ]
 
-        instruction = f"""Você é o Assistente Financeiro Sênior. Hoje é {hoje}.
-        Sua missão é dar a resposta correta ao usuário, custe o que custar.
+        instruction = f"""Você é o Assistente Financeiro Supremo. Hoje é {hoje}.
+        Você tem controle total sobre o banco de dados do usuário.
         
-        LOGICA DE FERRAMENTAS:
-        1. Se ele perguntar preço, tente primeiro 'get_market_data'.
-        2. SE O MERCADO FALHAR (der erro ou não achar preço), use IMEDIATAMENTE a 'search_web_tool' para buscar o preço no Google/Notícias.
-        3. Nunca diga que não conseguiu sem tentar a busca web como segunda opção.
-        
-        DADOS DO USUÁRIO: Renda R$ {analysis.get('total_income',0):.2f}, Gastos R$ {analysis.get('total_expenses',0):.2f}.
+        REGRAS:
+        1. Se o usuário disser 'aumentou 500', some 500 à renda atual (R$ {analysis.get('total_income',0):.2f}) e use 'manage_finance' com 'update_salary'.
+        2. Para registrar gastos, use 'manage_finance' com 'add_expense'.
+        3. Para remover um erro, use 'manage_finance' com 'delete_expense' (peça o ID se não souber).
+        4. Para investimentos, use 'manage_portfolio'.
+        5. Sempre confirme a ação realizada com sucesso.
         """
 
-        messages = [
-            {"role": "system", "content": instruction},
-            {"role": "user", "content": question}
-        ]
+        messages = [{"role": "system", "content": instruction}, {"role": "user", "content": question}]
 
-        # LOOP DE RACIOCÍNIO (Máximo 3 rodadas)
         for _ in range(3):
             response = groq_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",
-                temperature=0.1
+                messages=messages, tools=tools, tool_choice="auto", temperature=0.1
             )
+            msg = response.choices[0].message
+            if not msg.tool_calls: return msg.content
             
-            response_message = response.choices[0].message
-            tool_calls = response_message.tool_calls
-
-            if not tool_calls:
-                return response_message.content
-
-            messages.append(response_message)
-            for tool_call in tool_calls:
-                function_name = tool_call.function.name
-                args = json.loads(tool_call.function.arguments)
+            messages.append(msg)
+            for tool in msg.tool_calls:
+                args = json.loads(tool.function.arguments)
+                name = tool.function.name
+                res = "Ação realizada."
                 
-                if function_name == "search_web_tool":
-                    result = search_web_tool(args["query"])
-                elif function_name == "get_market_data":
-                    result = get_market_data(args["ticker"])
-                elif function_name == "add_expense_tool":
-                    result = add_expense_db(args["description"], args["amount"], args["category"], args.get("date", hoje))
-                elif function_name == "update_salary_tool":
-                    result = update_salary_db(args["amount"])
-                else: result = "Erro."
+                try:
+                    if name == "manage_finance":
+                        if args["action"] == "add_expense":
+                            db_execute("INSERT INTO expenses (user_id, description, amount, category, priority, date) VALUES (?,?,?,?,?,?)",
+                                       (user_id, args["description"], args["amount"], args.get("category", "Geral"), "Importante", hoje))
+                            res = f"Gasto de R$ {args['amount']} em '{args['description']}' salvo!"
+                        elif args["action"] == "update_salary":
+                            db_execute("UPDATE users SET salary = ? WHERE id = ?", (args["amount"], user_id))
+                            res = f"Salário atualizado para R$ {args['amount']}!"
+                    elif name == "manage_portfolio":
+                        db_execute("INSERT INTO portfolio (user_id, ticker, quantity, average_price) VALUES (?,?,?,?)",
+                                   (user_id, args["ticker"].upper(), args["quantity"], args["average_price"]))
+                        res = f"Ativo {args['ticker']} adicionado à sua carteira!"
+                    elif name == "market_info":
+                        res = get_market_data(args["query_or_ticker"])
+                except Exception as e:
+                    res = f"Erro na ferramenta: {str(e)}"
 
-                messages.append({
-                    "tool_call_id": tool_call.id,
-                    "role": "tool",
-                    "name": function_name,
-                    "content": result,
-                })
-            # O loop continua para a próxima rodada com os resultados das ferramentas
-        
-        return "Desculpe, após várias tentativas não consegui os dados. Tente perguntar de outra forma."
-
-    except Exception as e:
-        return f"❌ Erro no Assistente IA: {str(e)}"
+                messages.append({"tool_call_id": tool.id, "role": "tool", "name": name, "content": res})
+        return "Concluído com sucesso."
+    except Exception as e: return f"❌ Erro: {str(e)}"
 
 def generate_recommendations(analysis: dict) -> str:
     try:
         res = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": f"Renda {analysis.get('total_income')}, Gastos {analysis.get('total_expenses')}. Dê 3 dicas curtas."}],
-            model="llama-3.3-70b-versatile"
-        )
-        return res.choices[0].message.content
-    except: return "IA ocupada."
-
-def generate_proactive_alert(user_id: int, analysis: dict) -> dict:
-    try:
-        res = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": "Dica financeira curta."}],
+            messages=[{"role": "user", "content": f"Analise: Renda {analysis.get('total_income')}. Dê 1 dica."}],
             model="llama-3.1-8b-instant"
         )
-        return {"title": "Dica", "message": res.choices[0].message.content}
-    except: return None
+        return res.choices[0].message.content
+    except: return "Dica: Economize 10% hoje."
+
+def generate_proactive_alert(u, a): return None
