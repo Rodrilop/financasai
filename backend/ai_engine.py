@@ -52,18 +52,38 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
     try:
         hoje = datetime.now().strftime("%Y-%m-%d")
 
-        # --- 1. PROCESSAMENTO DE IMAGEM (GEMINI) ---
+        # --- CASO 0: IMAGEM (GROQ VISION / GEMINI FALLBACK) ---
         if image_base64:
             try:
+                # Tenta primeiro com Groq Vision (Custo Zero e Mais Rápido)
                 b64_data = image_base64.split("base64,")[1] if "base64," in image_base64 else image_base64
-                image_bytes = base64.b64decode(b64_data)
-                model = genai.GenerativeModel('gemini-flash-latest')
-                res = model.generate_content([
-                    "Extraia deste cupom fiscal: Valor Total, Estabelecimento e Categoria. Responda curto e organize os dados.",
-                    {"mime_type": "image/jpeg", "data": image_bytes}
-                ])
-                return res.text
-            except Exception as e: return f"Erro Vision: {e}"
+                
+                try:
+                    response = groq_client.chat.completions.create(
+                        model="llama-3.2-11b-vision-preview",
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": "Analise este cupom fiscal e extraia: Valor Total, Estabelecimento e Categoria. Seja direto."},
+                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_data}"}}
+                                ]
+                            }
+                        ]
+                    )
+                    return response.choices[0].message.content
+                except Exception as groq_v_err:
+                    print(f"Groq Vision falhou, tentando Gemini: {groq_v_err}")
+                    # Fallback para Gemini se o Groq falhar
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    image_bytes = base64.b64decode(b64_data)
+                    res = model.generate_content([
+                        "Extraia deste cupom fiscal: Valor Total, Estabelecimento e Categoria.",
+                        {"mime_type": "image/jpeg", "data": image_bytes}
+                    ])
+                    return res.text
+            except Exception as vision_err:
+                return f"❌ Erro na leitura da imagem: {str(vision_err)}"
 
         # --- 2. PROCESSAMENTO DE ÁUDIO (WHISPER) ---
         if audio_base64:
