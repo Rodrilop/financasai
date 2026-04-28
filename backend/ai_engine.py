@@ -75,15 +75,22 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
             print(f"🎙️ Transcrição Groq: {question}")
 
         # --- CASO 3: TEXTO (GROQ LLAMA 3) ---
-        instruction = f"Você é o assistente do FinançasAI. Hoje é {hoje}. Seja conciso. Se o usuário informar um gasto, identifique o valor e descrição."
+        instruction = f"""Você é o Assistente do FinançasAI, um consultor financeiro de elite.
+        Hoje é {hoje}. Seu objetivo é ser conciso, mas extremamente inteligente.
+        
+        REGRAS:
+        1. Se o usuário informar um gasto (ex: 'gastei 50 no uber'), confirme o valor e a categoria.
+        2. Se ele pedir conselhos, use os dados de Renda e Gastos fornecidos para dar insights reais.
+        3. Use linguagem amigável, brasileira e direta. Evite textos longos demais.
+        """
         
         response = groq_client.chat.completions.create(
             messages=[
                 {"role": "system", "content": instruction},
-                {"role": "user", "content": f"Dados: Renda R$ {analysis.get('total_income',0):.2f}. Usuário: {question}"}
+                {"role": "user", "content": f"Contexto: Renda R$ {analysis.get('total_income',0):.2f}, Gastos Totais R$ {analysis.get('total_expenses',0):.2f}. Usuário diz: {question}"}
             ],
             model="llama3-70b-8192",
-            temperature=0.5
+            temperature=0.6
         )
         
         return response.choices[0].message.content
