@@ -59,7 +59,7 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                 b64_data = image_base64.split("base64,")[1] if "base64," in image_base64 else image_base64
                 
                 try:
-                    # Groq Vision - O modelo mais rápido
+                    # Groq Vision 11B - O mais estável e rápido
                     response = groq_client.chat.completions.create(
                         model="llama-3.2-11b-vision-preview",
                         messages=[
@@ -74,9 +74,9 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                     )
                     return response.choices[0].message.content
                 except Exception as groq_v_err:
-                    print(f"⚠️ Groq Vision indisponível: {groq_v_err}")
-                    # Fallback para Gemini (Usando o nome estável 'gemini-1.5-flash')
-                    model = genai.GenerativeModel('models/gemini-1.5-flash')
+                    print(f"⚠️ Groq Vision falhou: {groq_v_err}")
+                    # Fallback para Gemini Flash Latest (Alias confirmado na sua conta)
+                    model = genai.GenerativeModel('models/gemini-flash-latest')
                     image_bytes = base64.b64decode(b64_data)
                     res = model.generate_content([
                         "Extraia deste cupom fiscal: Valor Total, Estabelecimento e Categoria.",
