@@ -27,41 +27,42 @@ def search_web_tool(query: str) -> str:
         return f"Erro na pesquisa: {str(e)}"
 
 def get_market_data_tool(ticker: str) -> str:
-    """Busca cotação de Ações, FIIs, Moedas ou Taxas (Selic) com inteligência de mapeamento."""
+    """Busca cotação com detecção flexível de palavras-chave (Dólar, Selic, etc)."""
     try:
-        query = ticker.upper().strip()
+        q = ticker.upper().strip()
         
-        # 1. Tratamento Especial para Taxas e Moedas
-        if "SELIC" in query:
+        # 1. Detecção por Palavras-Chave (Flexível)
+        target_ticker = q
+        if "SELIC" in q:
             return "Busca Web: " + search_web_tool("taxa selic hoje valor atualizado")
+        elif "DOLAR" in q or "DÓLAR" in q or "USD" in q:
+            target_ticker = "USDBRL=X"
+        elif "EURO" in q or "EUR" in q:
+            target_ticker = "EURBRL=X"
+        elif "BITCOIN" in q or "BTC" in q:
+            target_ticker = "BTC-USD"
         
-        synonyms = {
-            "DOLAR": "USDBRL=X", "DÓLAR": "USDBRL=X", "USD": "USDBRL=X",
-            "EURO": "EURBRL=X", "EUR": "EURBRL=X",
-            "BITCOIN": "BTC-USD", "BTC": "BTC-USD",
-            "ETHEREUM": "ETH-USD", "ETH": "ETH-USD"
-        }
+        # 2. Sufixo para B3 (se for um ticker puro de 5-6 letras)
+        if target_ticker == q and "." not in q and "-" not in q and 4 <= len(q) <= 6:
+            target_ticker = f"{q}.SA"
         
-        target_ticker = synonyms.get(query, query)
-        
-        # 2. Sufixo para B3 (Ações e FIIs)
-        if "." not in target_ticker and "-" not in target_ticker and "^" not in target_ticker:
-            if 4 <= len(target_ticker) <= 6:
-                target_ticker = f"{target_ticker}.SA"
-        
-        # 3. Tentativa com Yahoo Finance
+        # 3. Consulta Yahoo
         stock = yf.Ticker(target_ticker)
-        info = stock.info
-        price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
+        # Forçamos o download rápido dos dados
+        data = stock.history(period="1d")
+        if not data.empty:
+            price = data['Close'].iloc[-1]
+            return f"Cotação de {target_ticker}: R$ {price:.2f}"
         
+        # Se falhou o histórico, tenta o info (mais lento)
+        price = stock.info.get("currentPrice") or stock.info.get("regularMarketPrice")
         if price:
-            name = info.get("longName") or info.get("shortName") or target_ticker
-            return f"Cotação de {name} ({target_ticker}): R$ {price:.2f}"
+            return f"Cotação de {target_ticker}: R$ {price:.2f}"
         
-        # 4. Fallback obrigatório para Web
-        return f"Yahoo s/ dados para {target_ticker}. Busca Web: " + search_web_tool(f"valor {query} hoje")
+        # 4. Fallback Web Definitivo
+        return f"Sem dados para {target_ticker}. Busca Web: " + search_web_tool(f"valor {q} hoje")
     except Exception as e:
-        return f"Erro no Yahoo ({str(e)}). Tentando Web: " + search_web_tool(f"cotação {ticker} hoje")
+        return f"Erro na consulta ({str(e)}). Tentando Web: " + search_web_tool(f"valor {ticker} hoje")
 
 # --- MOTOR PRINCIPAL ---
 def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str = None, audio_base64: str = None) -> str:
