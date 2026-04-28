@@ -59,13 +59,14 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                 b64_data = image_base64.split("base64,")[1] if "base64," in image_base64 else image_base64
                 
                 try:
+                    # Groq Vision - O modelo mais rápido
                     response = groq_client.chat.completions.create(
                         model="llama-3.2-11b-vision-preview",
                         messages=[
                             {
                                 "role": "user",
                                 "content": [
-                                    {"type": "text", "text": "Analise este cupom fiscal e extraia: Valor Total, Estabelecimento e Categoria. Seja direto."},
+                                    {"type": "text", "text": "Extraia deste cupom: Valor Total, Estabelecimento e Categoria."},
                                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_data}"}}
                                 ]
                             }
@@ -73,9 +74,9 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                     )
                     return response.choices[0].message.content
                 except Exception as groq_v_err:
-                    print(f"Groq Vision falhou, tentando Gemini: {groq_v_err}")
-                    # Fallback para Gemini se o Groq falhar
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    print(f"⚠️ Groq Vision indisponível: {groq_v_err}")
+                    # Fallback para Gemini (Usando o nome estável 'gemini-1.5-flash')
+                    model = genai.GenerativeModel('models/gemini-1.5-flash')
                     image_bytes = base64.b64decode(b64_data)
                     res = model.generate_content([
                         "Extraia deste cupom fiscal: Valor Total, Estabelecimento e Categoria.",
@@ -83,7 +84,7 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                     ])
                     return res.text
             except Exception as vision_err:
-                return f"❌ Erro na leitura da imagem: {str(vision_err)}"
+                return f"❌ Erro nos motores de Visão: {str(vision_err)}"
 
         # --- 2. PROCESSAMENTO DE ÁUDIO (WHISPER) ---
         if audio_base64:
