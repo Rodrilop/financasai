@@ -27,7 +27,7 @@ def generate_recommendations(analysis: dict) -> str:
 
         chat_completion = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             temperature=0.7
         )
         return chat_completion.choices[0].message.content
@@ -46,7 +46,7 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
             b64_data = image_base64.split("base64,")[1] if "base64," in image_base64 else image_base64
             image_bytes = base64.b64decode(b64_data)
             
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-flash-latest')
             response = model.generate_content([
                 "Extraia o valor total, estabelecimento e data deste cupom fiscal. Se for um gasto, responda estritamente com: [GASTO: valor, descrição, categoria]",
                 {"mime_type": "image/jpeg", "data": image_bytes}
@@ -89,7 +89,7 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                 {"role": "system", "content": instruction},
                 {"role": "user", "content": f"Contexto: Renda R$ {analysis.get('total_income',0):.2f}, Gastos Totais R$ {analysis.get('total_expenses',0):.2f}. Usuário diz: {question}"}
             ],
-            model="llama3-70b-8192",
+            model="llama-3.1-70b-versatile",
             temperature=0.6
         )
         
@@ -108,7 +108,7 @@ def generate_proactive_alert(user_id: int, analysis: dict) -> dict:
 
         response = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama3-8b-8192"
+            model="llama-3.1-8b-instant"
         )
         return {"title": "Insight Rápido", "message": response.choices[0].message.content}
     except:
