@@ -157,10 +157,9 @@ Usuário: {question}"""
             {"role": "system", "content": instruction}
         ]
 
-        user_content = [{"type": "text", "text": context_text}]
+        user_content = []
 
         if image_base64:
-            # Garante que o base64 esteja no formato correto (remover prefixo se existir)
             b64_data = image_base64
             if "base64," in image_base64:
                 b64_data = image_base64.split("base64,")[1]
@@ -171,8 +170,10 @@ Usuário: {question}"""
             })
             user_content.append({
                 "type": "text", 
-                "text": "O usuário anexou uma imagem (provavelmente um cupom fiscal). Leia-o e extraia o valor, data e descrição."
+                "text": "<image>\nO usuário anexou uma imagem acima (um cupom fiscal). Por favor, leia-o, extraia o valor total, a data e a descrição dos itens. Use as ferramentas necessárias para registrar esse gasto."
             })
+
+        user_content.append({"type": "text", "text": context_text})
 
         if audio_base64:
             # Em uma implementação real com NVIDIA, usaríamos um modelo de STT aqui.
