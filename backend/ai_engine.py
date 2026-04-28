@@ -5,38 +5,58 @@ import google.generativeai as genai
 from groq import Groq
 from dotenv import load_dotenv
 from database import get_connection
+import yfinance as yf
 
 load_dotenv(override=True)
 
 # --- INICIALIZAÇÃO DOS CLIENTES ---
-# Groq para Velocidade (Texto/Áudio)
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
-
-# Gemini para Precisão Visual (Imagens/Cupons)
 genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
 
+def search_web_tool(query: str) -> str:
+    """Busca notícias financeiras e informações do mundo via DuckDuckGo."""
+    try:
+        from duckduckgo_search import DDGS
+        results = DDGS().text(query, max_results=3)
+        return "\n".join([f"- {r['title']}: {r['body']}" for r in results])
+    except Exception as e:
+        return f"Erro na pesquisa: {e}"
+
+def get_market_data(ticker: str) -> str:
+    """Busca cotação e dados de Ações, FIIs ou Cripto via Yahoo Finance."""
+    try:
+        # Adiciona .SA se for ação brasileira e não tiver
+        if not ticker.endswith(".SA") and len(ticker) >= 5 and "^" not in ticker:
+            ticker = f"{ticker.upper()}.SA"
+        
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        price = info.get("currentPrice") or info.get("regularMarketPrice")
+        name = info.get("longName", ticker)
+        currency = info.get("currency", "BRL")
+        
+        if price:
+            return f"Cotação de {name} ({ticker}): {currency} {price:.2f}"
+        return f"Não encontrei dados para o ticker {ticker}."
+    except Exception as e:
+        return f"Erro ao buscar dados de mercado: {e}"
+
 def generate_recommendations(analysis: dict) -> str:
-    """Usa o Groq (Llama 3) para gerar recomendações financeiras instantâneas."""
+    """Gera recomendações usando Groq Llama 3.3."""
     try:
         income = analysis.get("total_income", 0)
         expenses = analysis.get("total_expenses", 0)
-        balance = analysis.get("balance", 0)
-        
-        prompt = f"""Analise os dados: Renda R$ {income:.2f}, Gastos R$ {expenses:.2f}, Saldo R$ {balance:.2f}.
-        Dê 3 dicas curtas e práticas de economia para este usuário brasileiro. Seja direto e motivador."""
-
-        chat_completion = groq_client.chat.completions.create(
+        prompt = f"Analise: Renda {income}, Gastos {expenses}. Dê 3 dicas financeiras curtas."
+        res = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama-3.1-8b-instant",
-            temperature=0.7
+            model="llama-3.3-70b-versatile"
         )
-        return chat_completion.choices[0].message.content
-    except Exception as e:
-        print(f"Erro no Groq (Recommendations): {e}")
-        return "⚠️ IA temporariamente ocupada. Continue acompanhando seus gastos!"
+        return res.choices[0].message.content
+    except:
+        return "⚠️ IA ocupada."
 
 def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str = None, audio_base64: str = None) -> str:
-    """O Maestro: Roteia para Groq (Texto/Áudio) ou Gemini (Imagem)."""
+    """Maestro Híbrido com Suporte a Ferramentas (Search e Market)."""
     try:
         from datetime import datetime
         hoje = datetime.now().strftime("%Y-%m-%d")
@@ -45,71 +65,105 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
         if image_base64:
             b64_data = image_base64.split("base64,")[1] if "base64," in image_base64 else image_base64
             image_bytes = base64.b64decode(b64_data)
-            
             model = genai.GenerativeModel('gemini-flash-latest')
             response = model.generate_content([
-                "Extraia o valor total, estabelecimento e data deste cupom fiscal. Se for um gasto, responda estritamente com: [GASTO: valor, descrição, categoria]",
+                "Extraia os dados deste cupom fiscal. Retorne: [GASTO: valor, estabelecimento, categoria]",
                 {"mime_type": "image/jpeg", "data": image_bytes}
             ])
-            
-            content = response.text
-            if "[GASTO:" in content:
-                return f"📸 Li seu cupom! {content}. Deseja que eu registre agora?"
-            
-            return content
+            return response.text
 
-        # --- CASO 2: ÁUDIO (GROQ WHISPER + LLAMA) ---
+        # --- CASO 2: ÁUDIO (WHISPER) ---
         if audio_base64:
-            temp_audio = f"temp_audio_{user_id}.webm"
+            temp_audio = f"temp_{user_id}.webm"
             audio_data = audio_base64.split("base64,")[1] if "base64," in audio_base64 else audio_base64
-            with open(temp_audio, "wb") as f:
-                f.write(base64.b64decode(audio_data))
-            
+            with open(temp_audio, "wb") as f: f.write(base64.b64decode(audio_data))
             with open(temp_audio, "rb") as file:
                 transcription = groq_client.audio.transcriptions.create(
-                    file=(temp_audio, file.read()),
-                    model="whisper-large-v3",
-                )
+                    file=(temp_audio, file.read()), model="whisper-large-v3")
             os.remove(temp_audio)
             question = transcription.text
-            print(f"🎙️ Transcrição Groq: {question}")
 
-        # --- CASO 3: TEXTO (GROQ LLAMA 3) ---
-        instruction = f"""Você é o Assistente do FinançasAI, um consultor financeiro de elite.
-        Hoje é {hoje}. Seu objetivo é ser conciso, mas extremamente inteligente.
-        
-        REGRAS:
-        1. Se o usuário informar um gasto (ex: 'gastei 50 no uber'), confirme o valor e a categoria.
-        2. Se ele pedir conselhos, use os dados de Renda e Gastos fornecidos para dar insights reais.
-        3. Use linguagem amigável, brasileira e direta. Evite textos longos demais.
-        """
-        
+        # --- CASO 3: TEXTO COM TOOLS (GROQ) ---
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_web_tool",
+                    "description": "Busca notícias financeiras e fatos do mundo.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_market_data",
+                    "description": "Busca cotação de Ações e FIIs (ex: PETR4, IVVB11).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"ticker": {"type": "string", "description": "Símbolo da ação"}},
+                        "required": ["ticker"]
+                    }
+                }
+            }
+        ]
+
+        messages = [
+            {"role": "system", "content": f"Você é o Maestro do FinançasAI. Hoje é {hoje}. Se necessário, use ferramentas para responder sobre cotações ou notícias."},
+            {"role": "user", "content": f"Contexto: Renda R$ {analysis.get('total_income',0):.2f}. Pergunta: {question}"}
+        ]
+
+        # Chamada Groq com suporte a Tools
         response = groq_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": instruction},
-                {"role": "user", "content": f"Contexto: Renda R$ {analysis.get('total_income',0):.2f}, Gastos Totais R$ {analysis.get('total_expenses',0):.2f}. Usuário diz: {question}"}
-            ],
             model="llama-3.3-70b-versatile",
-            temperature=0.6
+            messages=messages,
+            tools=tools,
+            tool_choice="auto"
         )
-        
-        return response.choices[0].message.content
+
+        response_message = response.choices[0].message
+        tool_calls = response_message.tool_calls
+
+        if tool_calls:
+            messages.append(response_message)
+            for tool_call in tool_calls:
+                function_name = tool_call.function.name
+                args = json.loads(tool_call.function.arguments)
+                
+                if function_name == "search_web_tool":
+                    result = search_web_tool(args["query"])
+                elif function_name == "get_market_data":
+                    result = get_market_data(args["ticker"])
+                else:
+                    result = "Ferramenta não encontrada."
+
+                messages.append({
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "name": function_name,
+                    "content": result,
+                })
+            
+            # Segunda chamada para consolidar a resposta
+            final_response = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages
+            )
+            return final_response.choices[0].message.content
+
+        return response_message.content
 
     except Exception as e:
         return f"❌ Erro no Maestro IA: {str(e)}"
 
 def generate_proactive_alert(user_id: int, analysis: dict) -> dict:
-    """Analisador autônomo usando Groq (Llama 3)."""
     try:
-        income = analysis.get("total_income", 0)
-        expenses = analysis.get("total_expenses", 0)
-        
-        prompt = f"Renda: {income}, Gastos: {expenses}. Crie uma dica financeira curta de 10 palavras."
-
-        response = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
+        res = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": "Crie uma dica financeira de 10 palavras."}],
             model="llama-3.1-8b-instant"
         )
-        return {"title": "Insight Rápido", "message": response.choices[0].message.content}
-    except:
-        return None
+        return {"title": "Insight", "message": res.choices[0].message.content}
+    except: return None
