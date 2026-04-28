@@ -128,24 +128,33 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
         instruction = f"""Você é o Assistente Financeiro Pessoal Senior do FinançasAI. 
         Hoje é {hoje}. Você é um especialista em economia brasileira, investimentos e gestão de orçamento.
 
-        PERSONA:
-        - Seja profissional, mas acolhedor.
-        - Se o usuário perguntar sobre o mercado, use 'get_market_data' para cotações e 'search_web_tool' para contexto.
-        - Cruze os dados do usuário (Renda R$ {analysis.get('total_income',0):.2f}) com suas respostas para dar conselhos personalizados.
-        - Se identificar um gasto na fala do usuário, confirme o valor e a categoria.
+        REGRAS DE FERRAMENTAS:
+        - Para cotações de ações, FIIs ou moedas, use OBRIGATORIAMENTE 'get_market_data'.
+        - Para notícias ou fatos do mundo, use 'search_web_tool'.
+        - RESPONDA SEMPRE EM PORTUGUÊS.
+
+        CONTEXTO DO USUÁRIO:
+        - Renda Mensal: R$ {analysis.get('total_income',0):.2f}
+        - Gastos Totais: R$ {analysis.get('total_expenses',0):.2f}
         """
 
         messages = [
             {"role": "system", "content": instruction},
             {"role": "user", "content": question}
         ]
-
-        response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-            tools=tools,
-            tool_choice="auto"
-        )
+        
+        # Chamada Groq com suporte a Tools
+        try:
+            response = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                temperature=0.1 # Menor temperatura ajuda na precisão das ferramentas
+            )
+        except Exception as e:
+            print(f"Erro na primeira chamada Groq: {e}")
+            return "Desculpe, tive um problema ao acessar minhas ferramentas financeiras. Pode repetir?"
 
         response_message = response.choices[0].message
         tool_calls = response_message.tool_calls
