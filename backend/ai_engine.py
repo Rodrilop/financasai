@@ -184,15 +184,23 @@ Usuário: {question}"""
 
         messages.append({"role": "user", "content": user_content})
 
+        # Seleção dinâmica de modelo: Se houver imagem, usa um modelo Vision.
+        current_model = model_name
+        if image_base64:
+            current_model = "meta/llama-3.2-11b-vision-instruct"
+
         # Loop de execução de ferramentas (Máximo 2 rodadas)
         for _ in range(2):
+            # Só enviamos 'thinking' se for o modelo DeepSeek
+            extra_params = {"extra_body": {"chat_template_kwargs": {"thinking": False}}} if current_model == model_name else {}
+            
             response = client.chat.completions.create(
-                model=model_name,
+                model=current_model,
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
                 temperature=1,
-                extra_body={"chat_template_kwargs": {"thinking": False}}
+                **extra_params
             )
 
             response_message = response.choices[0].message
