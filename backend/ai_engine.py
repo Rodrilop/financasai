@@ -25,21 +25,41 @@ def search_web_tool(query: str) -> str:
 def get_market_data(ticker: str) -> str:
     """Busca cotação e dados de Ações, FIIs ou Cripto via Yahoo Finance."""
     try:
-        # Adiciona .SA se for ação brasileira e não tiver
-        if not ticker.endswith(".SA") and len(ticker) >= 5 and "^" not in ticker:
-            ticker = f"{ticker.upper()}.SA"
+        ticker = ticker.upper().strip()
+        
+        # Mapeamento de nomes comuns para tickers
+        synonyms = {
+            "DOLAR": "USDBRL=X",
+            "DÓLAR": "USDBRL=X",
+            "EURO": "EURBRL=X",
+            "BITCOIN": "BTC-USD",
+            "IBOVESPA": "^BVSP",
+            "SELIC": "^BCB-SELIC" # Exemplo, mas Selic é melhor via busca web
+        }
+        
+        if ticker in synonyms:
+            ticker = synonyms[ticker]
+        
+        # Lógica para ativos brasileiros (.SA)
+        # Se tem 5 ou 6 caracteres e não tem ponto nem hífen, provavelmente é B3
+        if "." not in ticker and "-" not in ticker and "^" not in ticker:
+            if len(ticker) >= 5: # Ex: PETR4, MXRF11
+                ticker = f"{ticker}.SA"
         
         stock = yf.Ticker(ticker)
+        # Tenta pegar o preço de várias chaves possíveis do Yahoo Finance
         info = stock.info
-        price = info.get("currentPrice") or info.get("regularMarketPrice")
-        name = info.get("longName", ticker)
+        price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose") or info.get("ask")
+        
+        name = info.get("longName") or info.get("shortName") or ticker
         currency = info.get("currency", "BRL")
         
         if price:
             return f"Cotação de {name} ({ticker}): {currency} {price:.2f}"
-        return f"Não encontrei dados para o ticker {ticker}."
+        
+        return f"Não consegui o preço exato para '{ticker}'. Tente usar a ferramenta 'search_web_tool' para buscar no Google."
     except Exception as e:
-        return f"Erro ao buscar dados de mercado: {e}"
+        return f"Erro técnico ao buscar '{ticker}': {str(e)}. Tente a busca web."
 
 def generate_recommendations(analysis: dict) -> str:
     """Gera recomendações usando Groq Llama 3.3."""
