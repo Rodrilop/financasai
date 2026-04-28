@@ -145,15 +145,18 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
             }
         ]
 
-        instruction = f"""Você é o Assistente Financeiro Supremo. Hoje é {hoje}.
-        Você tem controle total sobre o banco de dados do usuário.
+        instruction = f"""Você é o Assistente Financeiro Supremo do FinançasAI. Hoje é {hoje}.
         
-        REGRAS:
-        1. Se o usuário disser 'aumentou 500', some 500 à renda atual (R$ {analysis.get('total_income',0):.2f}) e use 'manage_finance' com 'update_salary'.
-        2. Para registrar gastos, use 'manage_finance' com 'add_expense'.
-        3. Para remover um erro, use 'manage_finance' com 'delete_expense' (peça o ID se não souber).
-        4. Para investimentos, use 'manage_portfolio'.
-        5. Sempre confirme a ação realizada com sucesso.
+        DADOS ATUAIS DO USUÁRIO (USE ESTES DADOS PARA RESPONDER):
+        - Renda/Salário Atual: R$ {analysis.get('total_income',0):.2f}
+        - Gastos Totais do Mês: R$ {analysis.get('total_expenses',0):.2f}
+        - Saldo Livre: R$ {analysis.get('balance',0):.2f}
+
+        REGRAS DE OURO:
+        1. Se o usuário perguntar qual o seu salário ou gastos, USE OS DADOS ACIMA. Não diga que não sabe.
+        2. Se ele disser que o salário 'aumentou X' ou 'diminuiu Y', faça o cálculo (Renda Atual + X) e use 'manage_finance' para atualizar.
+        3. Após usar qualquer ferramenta, explique ao usuário o que foi feito de forma amigável.
+        4. Sempre responda em Português do Brasil.
         """
 
         messages = [{"role": "system", "content": instruction}, {"role": "user", "content": question}]
@@ -191,7 +194,7 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                     res = f"Erro na ferramenta: {str(e)}"
 
                 messages.append({"tool_call_id": tool.id, "role": "tool", "name": name, "content": res})
-        return "Concluído com sucesso."
+        return response.choices[0].message.content if 'response' in locals() else "Ação processada com sucesso!"
     except Exception as e: return f"❌ Erro: {str(e)}"
 
 def generate_recommendations(analysis: dict) -> str:
