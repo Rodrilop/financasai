@@ -19,32 +19,49 @@ def search_web_tool(query: str) -> str:
     """Busca informações financeiras e notícias em tempo real via DuckDuckGo."""
     try:
         from duckduckgo_search import DDGS
-        results = DDGS().text(query, max_results=3)
-        if not results: return "Nenhum resultado encontrado."
-        return "\n".join([f"- {r['title']}: {r['body']}" for r in results])
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=3))
+            if not results: return "Nenhum resultado encontrado."
+            return "\n".join([f"- {r['title']}: {r['body']}" for r in results])
     except Exception as e:
         return f"Erro na pesquisa: {str(e)}"
 
 def get_market_data_tool(ticker: str) -> str:
-    """Busca cotação de Ações e FIIs com fallback automático para busca web."""
+    """Busca cotação de Ações, FIIs, Moedas ou Taxas (Selic) com inteligência de mapeamento."""
     try:
-        ticker = ticker.upper().strip()
-        synonyms = {"DOLAR": "USDBRL=X", "DÓLAR": "USDBRL=X", "EURO": "EURBRL=X", "BITCOIN": "BTC-USD"}
-        if ticker in synonyms: ticker = synonyms[ticker]
-        if "." not in ticker and "-" not in ticker and "^" not in ticker:
-            if len(ticker) >= 5: ticker = f"{ticker}.SA"
+        query = ticker.upper().strip()
         
-        stock = yf.Ticker(ticker)
+        # 1. Tratamento Especial para Taxas e Moedas
+        if "SELIC" in query:
+            return "Busca Web: " + search_web_tool("taxa selic hoje valor atualizado")
+        
+        synonyms = {
+            "DOLAR": "USDBRL=X", "DÓLAR": "USDBRL=X", "USD": "USDBRL=X",
+            "EURO": "EURBRL=X", "EUR": "EURBRL=X",
+            "BITCOIN": "BTC-USD", "BTC": "BTC-USD",
+            "ETHEREUM": "ETH-USD", "ETH": "ETH-USD"
+        }
+        
+        target_ticker = synonyms.get(query, query)
+        
+        # 2. Sufixo para B3 (Ações e FIIs)
+        if "." not in target_ticker and "-" not in target_ticker and "^" not in target_ticker:
+            if 4 <= len(target_ticker) <= 6:
+                target_ticker = f"{target_ticker}.SA"
+        
+        # 3. Tentativa com Yahoo Finance
+        stock = yf.Ticker(target_ticker)
         info = stock.info
         price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
-        if price:
-            name = info.get("longName") or info.get("shortName") or ticker
-            return f"Cotação de {name} ({ticker}): R$ {price:.2f}"
         
-        # Fallback Web
-        return f"Yahoo s/ dados para {ticker}. Web: " + search_web_tool(f"valor {ticker} hoje")
-    except:
-        return search_web_tool(f"cotação {ticker} hoje")
+        if price:
+            name = info.get("longName") or info.get("shortName") or target_ticker
+            return f"Cotação de {name} ({target_ticker}): R$ {price:.2f}"
+        
+        # 4. Fallback obrigatório para Web
+        return f"Yahoo s/ dados para {target_ticker}. Busca Web: " + search_web_tool(f"valor {query} hoje")
+    except Exception as e:
+        return f"Erro no Yahoo ({str(e)}). Tentando Web: " + search_web_tool(f"cotação {ticker} hoje")
 
 # --- MOTOR PRINCIPAL ---
 def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str = None, audio_base64: str = None) -> str:
