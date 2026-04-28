@@ -51,6 +51,41 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
         from datetime import datetime
         hoje = datetime.now().strftime("%Y-%m-%d")
 
+        # --- CASO 0: IMAGEM (GEMINI VISION) ---
+        if image_base64:
+            try:
+                b64_data = image_base64.split("base64,")[1] if "base64," in image_base64 else image_base64
+                image_bytes = base64.b64decode(b64_data)
+                model = genai.GenerativeModel('gemini-flash-latest')
+                res = model.generate_content([
+                    "Analise esta imagem de cupom fiscal e extraia: Valor Total, Estabelecimento e Categoria. Responda de forma curta.",
+                    {"mime_type": "image/jpeg", "data": image_bytes}
+                ])
+                return res.text
+            except Exception as vision_err:
+                print(f"❌ Erro Vision: {vision_err}")
+
+        # --- CASO 1: ÁUDIO (WHISPER) ---
+        if audio_base64:
+            try:
+                temp_audio = f"temp_{user_id}_{datetime.now().timestamp()}.webm"
+                audio_data = audio_base64.split("base64,")[1] if "base64," in audio_base64 else audio_base64
+                with open(temp_audio, "wb") as f: 
+                    f.write(base64.b64decode(audio_data))
+                
+                with open(temp_audio, "rb") as file:
+                    transcription = groq_client.audio.transcriptions.create(
+                        file=(temp_audio, file.read()), 
+                        model="whisper-large-v3"
+                    )
+                
+                os.remove(temp_audio)
+                if transcription.text:
+                    question = transcription.text
+                    print(f"🎙️ Transcrição Groq Sucesso: {question}")
+            except Exception as audio_err:
+                print(f"❌ Erro na transcrição Groq: {audio_err}")
+
         # --- LÓGICA DE BANCO DE DADOS ---
         def db_execute(query: str, params: tuple):
             conn = get_connection()
