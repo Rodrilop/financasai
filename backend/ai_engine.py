@@ -85,8 +85,58 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
             os.remove(temp_audio)
             question = transcription.text
 
-        # --- CASO 3: TEXTO COM LOOP DE TOOLS ---
+        # --- FERRAMENTAS DE ESCRITA (BANCO DE DADOS) ---
+        def add_expense_db(description: str, amount: float, category: str, date: str = hoje) -> str:
+            try:
+                conn = get_connection()
+                conn.execute("INSERT INTO expenses (user_id, description, amount, category, priority, date) VALUES (?,?,?,?,?,?)",
+                             (user_id, description, amount, category, "Importante", date))
+                conn.commit()
+                conn.close()
+                return f"✅ Gasto de R$ {amount:.2f} em '{description}' registrado com sucesso!"
+            except Exception as e:
+                return f"Erro ao salvar no banco: {str(e)}"
+
+        def update_salary_db(amount: float) -> str:
+            try:
+                conn = get_connection()
+                conn.execute("UPDATE users SET salary = ? WHERE id = ?", (amount, user_id))
+                conn.commit()
+                conn.close()
+                return f"💰 Renda atualizada para R$ {amount:.2f} com sucesso!"
+            except Exception as e:
+                return f"Erro ao atualizar renda: {str(e)}"
+
         tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_expense_tool",
+                    "description": "Registra um novo gasto no banco de dados.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "description": {"type": "string", "description": "O que foi comprado"},
+                            "amount": {"type": "number", "description": "Valor em reais"},
+                            "category": {"type": "string", "description": "Categoria (Ex: Alimentação, Transporte)"},
+                            "date": {"type": "string", "description": "Data no formato YYYY-MM-DD"}
+                        },
+                        "required": ["description", "amount", "category"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_salary_tool",
+                    "description": "Atualiza o salário/renda mensal do usuário.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"amount": {"type": "number"}},
+                        "required": ["amount"]
+                    }
+                }
+            },
             {
                 "type": "function",
                 "function": {
@@ -103,7 +153,7 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                 "type": "function",
                 "function": {
                     "name": "get_market_data",
-                    "description": "Tenta buscar cotação de Ações e FIIs no Yahoo Finance.",
+                    "description": "Busca cotação de Ações e FIIs no Yahoo Finance.",
                     "parameters": {
                         "type": "object",
                         "properties": {"ticker": {"type": "string"}},
@@ -154,6 +204,10 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                     result = search_web_tool(args["query"])
                 elif function_name == "get_market_data":
                     result = get_market_data(args["ticker"])
+                elif function_name == "add_expense_tool":
+                    result = add_expense_db(args["description"], args["amount"], args["category"], args.get("date", hoje))
+                elif function_name == "update_salary_tool":
+                    result = update_salary_db(args["amount"])
                 else: result = "Erro."
 
                 messages.append({
