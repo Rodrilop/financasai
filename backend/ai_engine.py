@@ -18,9 +18,10 @@ def search_web_tool(query: str) -> str:
     try:
         from duckduckgo_search import DDGS
         results = DDGS().text(query, max_results=3)
+        if not results: return "Nenhum resultado encontrado na web."
         return "\n".join([f"- {r['title']}: {r['body']}" for r in results])
     except Exception as e:
-        return f"Erro na pesquisa: {e}"
+        return f"Erro na pesquisa web: {str(e)}"
 
 def get_market_data(ticker: str) -> str:
     """Busca cotação e dados de Ações, FIIs ou Cripto via Yahoo Finance."""
@@ -36,57 +37,37 @@ def get_market_data(ticker: str) -> str:
         
         stock = yf.Ticker(ticker)
         info = stock.info
-        price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose") or info.get("ask")
+        # Tenta várias chaves de preço (Yahoo Finance varia o nome da chave para FIIs)
+        price = (info.get("currentPrice") or info.get("regularMarketPrice") or 
+                 info.get("bid") or info.get("ask") or info.get("previousClose"))
+        
         name = info.get("longName") or info.get("shortName") or ticker
         currency = info.get("currency", "BRL")
         
         if price:
             return f"Cotação de {name} ({ticker}): {currency} {price:.2f}"
-        return f"Não consegui o preço exato para '{ticker}'."
+        return f"ALERTA: Não encontrei preço para '{ticker}' no Yahoo. Por favor, use a ferramenta 'search_web_tool' para buscar no Google agora."
     except Exception as e:
-        return f"Erro técnico ao buscar '{ticker}': {str(e)}"
-
-def generate_recommendations(analysis: dict) -> str:
-    """Gera recomendações usando Groq Llama 3.3."""
-    try:
-        income = analysis.get("total_income", 0)
-        expenses = analysis.get("total_expenses", 0)
-        prompt = f"""Como seu Assistente Financeiro, analisei seus dados: 
-        Renda R$ {income:.2f}, Gastos R$ {expenses:.2f}. 
-        Forneça 3 recomendações estratégicas para melhorar o saldo livre."""
-        res = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama-3.3-70b-versatile",
-            temperature=0.7
-        )
-        return res.choices[0].message.content
-    except:
-        return "⚠️ IA temporariamente ocupada."
+        return f"ERRO TÉCNICO: Falha ao acessar Yahoo para '{ticker}'. Use a ferramenta 'search_web_tool' como alternativa."
 
 def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str = None, audio_base64: str = None) -> str:
-    """Assistente Financeiro Híbrido com Prompts Enriquecidos."""
+    """Assistente com Loop de Raciocínio (Tenta várias ferramentas se necessário)."""
     try:
         from datetime import datetime
         hoje = datetime.now().strftime("%Y-%m-%d")
 
-        # --- CASO 1: IMAGEM (ESPECIALISTA EM VISÃO GEMINI) ---
+        # --- CASO 1: IMAGEM (GEMINI) ---
         if image_base64:
             b64_data = image_base64.split("base64,")[1] if "base64," in image_base64 else image_base64
             image_bytes = base64.b64decode(b64_data)
-            
-            vision_prompt = """Você é um Especialista em Auditoria Fiscal e Visão Computacional.
-            Sua missão é extrair dados de cupons e notas fiscais com 100% de precisão.
-            Identifique: Valor Total, Nome do Estabelecimento e Data.
-            Responda de forma organizada e pergunte se o usuário deseja registrar o gasto."""
-            
             model = genai.GenerativeModel('gemini-flash-latest')
             response = model.generate_content([
-                vision_prompt,
+                "Você é um Especialista em Auditoria. Extraia o gasto desta imagem: [GASTO: valor, estabelecimento, categoria]",
                 {"mime_type": "image/jpeg", "data": image_bytes}
             ])
             return response.text
 
-        # --- CASO 2: ÁUDIO (TRANSCRIÇÃO WHISPER) ---
+        # --- CASO 2: ÁUDIO ---
         if audio_base64:
             temp_audio = f"temp_{user_id}.webm"
             audio_data = audio_base64.split("base64,")[1] if "base64," in audio_base64 else audio_base64
@@ -97,13 +78,13 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
             os.remove(temp_audio)
             question = transcription.text
 
-        # --- CASO 3: TEXTO (CONSULTOR FINANCEIRO & ANALISTA DE MERCADO) ---
+        # --- CASO 3: TEXTO COM LOOP DE TOOLS ---
         tools = [
             {
                 "type": "function",
                 "function": {
                     "name": "search_web_tool",
-                    "description": "Busca notícias financeiras e tendências de mercado.",
+                    "description": "Busca informações na web quando o Yahoo Finance falha ou para notícias.",
                     "parameters": {
                         "type": "object",
                         "properties": {"query": {"type": "string"}},
@@ -115,7 +96,7 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                 "type": "function",
                 "function": {
                     "name": "get_market_data",
-                    "description": "Busca cotações em tempo real de Ações, FIIs e Moedas.",
+                    "description": "Tenta buscar cotação de Ações e FIIs no Yahoo Finance.",
                     "parameters": {
                         "type": "object",
                         "properties": {"ticker": {"type": "string"}},
@@ -125,41 +106,38 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
             }
         ]
 
-        instruction = f"""Você é o Assistente Financeiro Pessoal Senior do FinançasAI. 
-        Hoje é {hoje}. Você é um especialista em economia brasileira, investimentos e gestão de orçamento.
-
-        REGRAS DE FERRAMENTAS:
-        - Para cotações de ações, FIIs ou moedas, use OBRIGATORIAMENTE 'get_market_data'.
-        - Para notícias ou fatos do mundo, use 'search_web_tool'.
-        - RESPONDA SEMPRE EM PORTUGUÊS.
-
-        CONTEXTO DO USUÁRIO:
-        - Renda Mensal: R$ {analysis.get('total_income',0):.2f}
-        - Gastos Totais: R$ {analysis.get('total_expenses',0):.2f}
+        instruction = f"""Você é o Assistente Financeiro Sênior. Hoje é {hoje}.
+        Sua missão é dar a resposta correta ao usuário, custe o que custar.
+        
+        LOGICA DE FERRAMENTAS:
+        1. Se ele perguntar preço, tente primeiro 'get_market_data'.
+        2. SE O MERCADO FALHAR (der erro ou não achar preço), use IMEDIATAMENTE a 'search_web_tool' para buscar o preço no Google/Notícias.
+        3. Nunca diga que não conseguiu sem tentar a busca web como segunda opção.
+        
+        DADOS DO USUÁRIO: Renda R$ {analysis.get('total_income',0):.2f}, Gastos R$ {analysis.get('total_expenses',0):.2f}.
         """
 
         messages = [
             {"role": "system", "content": instruction},
             {"role": "user", "content": question}
         ]
-        
-        # Chamada Groq com suporte a Tools
-        try:
+
+        # LOOP DE RACIOCÍNIO (Máximo 3 rodadas)
+        for _ in range(3):
             response = groq_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
-                temperature=0.1 # Menor temperatura ajuda na precisão das ferramentas
+                temperature=0.1
             )
-        except Exception as e:
-            print(f"Erro na primeira chamada Groq: {e}")
-            return "Desculpe, tive um problema ao acessar minhas ferramentas financeiras. Pode repetir?"
+            
+            response_message = response.choices[0].message
+            tool_calls = response_message.tool_calls
 
-        response_message = response.choices[0].message
-        tool_calls = response_message.tool_calls
+            if not tool_calls:
+                return response_message.content
 
-        if tool_calls:
             messages.append(response_message)
             for tool_call in tool_calls:
                 function_name = tool_call.function.name
@@ -177,23 +155,27 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                     "name": function_name,
                     "content": result,
                 })
-            
-            final_response = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages
-            )
-            return final_response.choices[0].message.content
-
-        return response_message.content
+            # O loop continua para a próxima rodada com os resultados das ferramentas
+        
+        return "Desculpe, após várias tentativas não consegui os dados. Tente perguntar de outra forma."
 
     except Exception as e:
         return f"❌ Erro no Assistente IA: {str(e)}"
 
+def generate_recommendations(analysis: dict) -> str:
+    try:
+        res = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": f"Renda {analysis.get('total_income')}, Gastos {analysis.get('total_expenses')}. Dê 3 dicas curtas."}],
+            model="llama-3.3-70b-versatile"
+        )
+        return res.choices[0].message.content
+    except: return "IA ocupada."
+
 def generate_proactive_alert(user_id: int, analysis: dict) -> dict:
     try:
         res = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": "Dê uma dica financeira curta."}],
+            messages=[{"role": "user", "content": "Dica financeira curta."}],
             model="llama-3.1-8b-instant"
         )
-        return {"title": "Dica do Assistente", "message": res.choices[0].message.content}
+        return {"title": "Dica", "message": res.choices[0].message.content}
     except: return None
