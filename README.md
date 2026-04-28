@@ -4,19 +4,21 @@ O **FinançasAI** é uma plataforma de gestão financeira revolucionária que ut
 
 ## ✨ Funcionalidades "Agent-First"
 
-- **📸 Visão Computacional:** Tire fotos de seus cupons fiscais e a IA registra os gastos automaticamente.
-- **🎙️ Comandos de Voz:** Fale naturalmente com o app. Ele entende, transcreve e executa suas ordens via áudio nativo.
-- **📱 WhatsApp Integration:** Controle suas finanças direto pelo WhatsApp (via Webhook Twilio).
-- **🔎 Investigação Web:** O Agente pesquisa taxas de juros, inflação e notícias do mercado em tempo real.
+- **📸 Visão Computacional:** Tire fotos de seus cupons fiscais e o Assistente registra os gastos automaticamente via Groq Vision/Gemini.
+- **🎙️ Comandos de Voz:** Fale naturalmente com o app. O Assistente entende, transcreve (Groq Whisper) e executa suas ordens via áudio nativo.
+- **📈 Gestão de Carteira:** Adicione e acompanhe ações da B3, FIIs e Criptomoedas em tempo real direto pela conversa.
+- **📱 WhatsApp Integration:** Controle suas finanças pelo WhatsApp (via Evolution API).
+- **🔎 Investigação Web:** O Assistente pesquisa taxas de juros (Selic), moedas (Dólar) e notícias do mercado em tempo real.
 - **🔔 Motor Proativo:** A IA analisa seus dados em background e envia notificações automáticas com dicas de economia.
 
 ## 🛠️ Tecnologias Utilizadas
 
 ### Backend
-- **Python 3.10** com **FastAPI** e **Uvicorn**
-- **SQLite** (padrão local) com suporte opcional ao **Turso / libSQL** (Edge-Cloud)
-- **Google Gemini** via `google-generativeai`
-- **JWT** via `pyjwt` + senhas com `passlib[bcrypt]` (bcrypt 4.0.1)
+- **FastAPI** com **Uvicorn** e **Groq SDK** (Llama 3.3 / Whisper)
+- **SQLite** (padrão local) ou **Turso / libSQL** (Edge-Cloud)
+- **Google Gemini** (Vision fallback) via `google-generativeai`
+- **yfinance** & **duckduckgo-search** para dados de mercado
+- **JWT** via `pyjwt` + senhas com `passlib[bcrypt]`
 - **Pytest** para testes automatizados
 
 ### Frontend
@@ -47,8 +49,8 @@ cd financasai
 
 **2. Crie o arquivo `.env` na raiz do projeto:**
 ```env
+GROQ_API_KEY=sua_chave_groq_aqui
 GEMINI_API_KEY=sua_chave_gemini_aqui
-GEMINI_MODEL=gemini-2.5-flash
 JWT_SECRET_KEY=uma_chave_secreta_forte_aqui
 TURSO_DATABASE_URL=        # (opcional) URL do banco Turso
 TURSO_AUTH_TOKEN=          # (opcional) Token do Turso
@@ -92,8 +94,8 @@ pip install -r requirements.txt
 
 Crie o arquivo `backend/.env`:
 ```env
+GROQ_API_KEY=sua_chave_groq_aqui
 GEMINI_API_KEY=sua_chave_gemini_aqui
-GEMINI_MODEL=gemini-2.5-flash
 JWT_SECRET_KEY=uma_chave_secreta_forte_aqui
 ```
 
