@@ -89,7 +89,7 @@ def chat_with_ai(question: str, analysis: dict, user_id: int, image_base64: str 
                 {"role": "system", "content": instruction},
                 {"role": "user", "content": f"Contexto: Renda R$ {analysis.get('total_income',0):.2f}, Gastos Totais R$ {analysis.get('total_expenses',0):.2f}. Usuário diz: {question}"}
             ],
-            model="llama-3.1-70b-versatile",
+            model="llama-3.3-70b-versatile",
             temperature=0.6
         )
         
