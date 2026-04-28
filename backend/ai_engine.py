@@ -154,9 +154,27 @@ Após executar as ações, confirme gentilmente o que foi feito. Seja conciso, h
 Usuário: {question}"""
 
         messages = [
-            {"role": "system", "content": instruction},
-            {"role": "user", "content": context_text}
+            {"role": "system", "content": instruction}
         ]
+
+        user_content = [{"type": "text", "text": context_text}]
+
+        if image_base64:
+            # Garante que o base64 esteja no formato correto (remover prefixo se existir)
+            b64_data = image_base64
+            if "base64," in image_base64:
+                b64_data = image_base64.split("base64,")[1]
+            
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{b64_data}"}
+            })
+            user_content.append({
+                "type": "text", 
+                "text": "O usuário anexou uma imagem (provavelmente um cupom fiscal). Leia-o e extraia o valor, data e descrição."
+            })
+
+        messages.append({"role": "user", "content": user_content})
 
         # Loop de execução de ferramentas (Máximo 2 rodadas)
         for _ in range(2):
