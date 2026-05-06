@@ -30,7 +30,7 @@ export default function Expenses() {
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null) // null | 'add' | 'edit'
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState(() => makeEmptyForm(new Date().toISOString().slice(0, 7)))
   const [editId, setEditId] = useState(null)
   const [selected, setSelected] = useState([])
   const { month } = useOutletContext()
