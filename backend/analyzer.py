@@ -114,6 +114,7 @@ def compute_analysis(user_id: int, month: Optional[str] = None):
         "investment_suggested": total_income * inv_pct / 100,
         "investment_pct": inv_pct,
         "emergency_goal": settings.get("emergency_reserve_goal", 0),
+        "emergency_current": balance, # Current emergency is the total accumulated balance
         "investor_profile": settings.get("investor_profile", "moderado"),
         "reference_month": ref_month,
         "expense_count": len(expenses),

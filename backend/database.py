@@ -1,136 +1,262 @@
 import sqlite3
 import os
 import logging
+import json
+import requests as _requests
 from pathlib import Path
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent / "financasai.db"
-TURSO_DB_URL = os.getenv("TURSO_DATABASE_URL", "")
+TURSO_DB_URL   = os.getenv("TURSO_DATABASE_URL", "")
 TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "")
 
-class CustomRow:
-    def __init__(self, cursor, row):
-        self._row = row
-        self._keys = [col[0] for col in cursor.description] if cursor.description else []
+
+# ─────────────────────────────────────────────────────────
+#  Turso HTTP Client (no Rust/native libs needed)
+# ─────────────────────────────────────────────────────────
+
+class TursoRow:
+    """Dict-like row from Turso HTTP response."""
+    def __init__(self, columns, values):
+        self._columns = columns
+        self._values  = values
+
     def keys(self):
-        return self._keys
+        return self._columns
+
     def __getitem__(self, key):
-        if isinstance(key, int): return self._row[key]
-        return self._row[self._keys.index(key)]
-    def __iter__(self): return iter(self._row)
-    def __len__(self): return len(self._row)
+        if isinstance(key, int):
+            return self._values[key]
+        return self._values[self._columns.index(key)]
 
-class LibsqlCursorProxy:
-    def __init__(self, cursor, row_factory):
-        self._cursor = cursor
-        self.row_factory = row_factory
-    def execute(self, *args, **kwargs):
-        self._cursor.execute(*args, **kwargs)
-        return self
+    def __iter__(self):
+        return iter(zip(self._columns, self._values))
+
+    def __len__(self):
+        return len(self._values)
+
+    def __repr__(self):
+        return str(dict(zip(self._columns, self._values)))
+
+
+class TursoResult:
+    """Fake cursor result from a Turso HTTP query."""
+    def __init__(self, columns, rows, last_insert_rowid=None, rows_affected=0):
+        self._columns = columns
+        self._rows    = [TursoRow(columns, r) for r in rows]
+        self.lastrowid      = last_insert_rowid
+        self.rows_affected  = rows_affected
+        self.description    = [(c, None, None, None, None, None, None) for c in columns]
+
     def fetchone(self):
-        row = self._cursor.fetchone()
-        return self.row_factory(self, row) if row and self.row_factory else row
-    def fetchall(self):
-        rows = self._cursor.fetchall()
-        return [self.row_factory(self, row) for row in rows] if rows and self.row_factory else rows
-    def fetchmany(self, size=None):
-        rows = self._cursor.fetchmany() if size is None else self._cursor.fetchmany(size)
-        return [self.row_factory(self, row) for row in rows] if rows and self.row_factory else rows
-    @property
-    def description(self): return self._cursor.description
-    @property
-    def lastrowid(self): return getattr(self._cursor, 'lastrowid', None)
+        return self._rows[0] if self._rows else None
 
-class LibsqlConnectionProxy:
-    def __init__(self, conn):
-        self._conn = conn
-        self.row_factory = None
+    def fetchall(self):
+        return self._rows
+
+    def fetchmany(self, size=1):
+        return self._rows[:size]
+
+
+class TursoConnection:
+    """HTTP-based Turso connection that mimics the sqlite3 interface."""
+
+    def __init__(self, url: str, token: str):
+        # Turso HTTP endpoint: https://<db-name>.turso.io/v2/pipeline
+        base = url.replace("libsql://", "https://")
+        self._endpoint = f"{base}/v2/pipeline"
+        self._headers  = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type":  "application/json",
+        }
+        self._stmts: list = []   # batched statements before commit()
+        self._autocommit = True  # will switch to False on first write
+
+    # ── Core execute ──────────────────────────────────────
+    def _http_execute(self, statements: list) -> list:
+        """POST a pipeline of SQL statements to Turso."""
+        payload = {
+            "requests": [
+                {"type": "execute", "stmt": {"sql": s["sql"], "args": [
+                    self._to_arg(v) for v in s.get("args", [])
+                ]}}
+                for s in statements
+            ] + [{"type": "close"}]
+        }
+        resp = _requests.post(self._endpoint, json=payload, headers=self._headers, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        results = []
+        for item in data.get("results", []):
+            if item.get("type") == "error":
+                raise Exception(f"Turso error: {item.get('error', {}).get('message', 'unknown')}")
+            if item.get("type") == "ok":
+                response = item.get("response", {})
+                if response.get("type") != "execute":
+                    continue  # skip "close" responses
+                res = response.get("result", {})
+                cols = [c["name"] for c in res.get("cols", [])]
+                # Each row is a list of {"type": ..., "value": ...} objects
+                rows = [
+                    [self._from_value(cell) for cell in row]
+                    for row in res.get("rows", [])
+                ]
+                last_id = res.get("last_insert_rowid")
+                results.append(TursoResult(
+                    cols, rows,
+                    last_insert_rowid=int(last_id) if last_id else None
+                ))
+        return results
+
+    @staticmethod
+    def _to_arg(v):
+        if v is None:   return {"type": "null"}
+        if isinstance(v, bool): return {"type": "integer", "value": str(int(v))}
+        if isinstance(v, int):  return {"type": "integer", "value": str(v)}
+        if isinstance(v, float): return {"type": "float",  "value": v}
+        return {"type": "text", "value": str(v)}
+
+    @staticmethod
+    def _from_value(v):
+        t = v.get("type")
+        val = v.get("value")
+        if t == "null":    return None
+        if t == "integer": return int(val)
+        if t == "float":   return float(val)
+        return val  # text / blob
+
+    def execute(self, sql: str, params=()):
+        results = self._http_execute([{"sql": sql, "args": list(params)}])
+        return results[0] if results else TursoResult([], [])
+
     def cursor(self):
-        return LibsqlCursorProxy(self._conn.cursor(), self.row_factory)
-    def execute(self, *args, **kwargs):
-        cursor = self.cursor()
-        return cursor.execute(*args, **kwargs)
-    def commit(self): self._conn.commit()
-    def close(self): self._conn.close()
+        return self  # self acts as cursor too
+
+    def commit(self):
+        if self._stmts:
+            self._http_execute(self._stmts)
+            self._stmts = []
+
+    def close(self):
+        pass  # HTTP is stateless
+
+
+# ─────────────────────────────────────────────────────────
+#  get_connection — Turso HTTP or local SQLite fallback
+# ─────────────────────────────────────────────────────────
 
 def get_connection():
-    """Establish and return a connection to the Turso or local SQLite database."""
-    if TURSO_DB_URL:
+    """Return a Turso HTTP connection, or local SQLite as fallback."""
+    if TURSO_DB_URL and TURSO_AUTH_TOKEN:
         try:
-            import libsql_experimental as libsql
-            conn = libsql.connect(TURSO_DB_URL, auth_token=TURSO_AUTH_TOKEN)
-            proxy = LibsqlConnectionProxy(conn)
-            proxy.row_factory = CustomRow
-            return proxy
-        except ImportError:
-            logger.warning("libsql-experimental not installed. Falling back to local SQLite.")
+            conn = TursoConnection(TURSO_DB_URL, TURSO_AUTH_TOKEN)
+            # Quick ping
+            conn.execute("SELECT 1")
+            logger.debug("Turso HTTP connection established.")
+            return conn
+        except Exception as e:
+            logger.warning(f"Turso connection failed, falling back to SQLite: {e}")
 
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
+
+# ─────────────────────────────────────────────────────────
+#  Schema helpers
+# ─────────────────────────────────────────────────────────
+
 def _column_exists(conn, table: str, column: str) -> bool:
-    """Check if a column exists in a table using PRAGMA table_info."""
     try:
-        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-        return any(r["name"] == column for r in rows)
-    except Exception as e:
-        logger.error(f"Error checking column {column} in {table}: {e}")
+        # Try to select the column with LIMIT 0. If it fails, column doesn't exist.
+        conn.execute(f"SELECT {column} FROM {table} LIMIT 0")
+        return True
+    except Exception:
         return False
 
+
+def _table_exists(conn, table: str) -> bool:
+    try:
+        result = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+            (table,)
+        ).fetchone()
+        return (result[0] if result else 0) > 0
+    except Exception as e:
+        logger.error(f"_table_exists({table}): {e}")
+        return False
+
+
 def _migrate(conn):
-    """
-    Safely add user_id column to existing tables, and date column to income.
-    """
+    """Run safe schema migrations (add columns if missing)."""
     tables = ["settings", "income", "expenses", "portfolio", "notifications"]
     for table in tables:
-        if not _column_exists(conn, table, "user_id"):
-            logger.info(f"Migrating table '{table}': adding user_id column")
+        if _table_exists(conn, table) and not _column_exists(conn, table, "user_id"):
             try:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER DEFAULT 1")
                 conn.commit()
-                logger.info(f"  -> user_id column added to '{table}' successfully")
+                logger.info(f"Migrated '{table}': added user_id")
             except Exception as e:
-                logger.error(f"  -> Failed to add user_id to '{table}': {e}")
-                
-    if not _column_exists(conn, "income", "date"):
-        logger.info(f"Migrating table 'income': adding date column")
+                logger.error(f"Migration user_id on '{table}': {e}")
+
+    if _table_exists(conn, "income") and not _column_exists(conn, "income", "date"):
         try:
             today = datetime.now().strftime("%Y-%m-%d")
             conn.execute(f"ALTER TABLE income ADD COLUMN date TEXT DEFAULT '{today}'")
             conn.commit()
+            logger.info("Migrated 'income': added date")
         except Exception as e:
-            logger.error(f"  -> Failed to add date to 'income': {e}")
+            logger.error(f"Migration date on 'income': {e}")
 
-    if not _column_exists(conn, "users", "phone"):
-        logger.info("Migrating table 'users': adding phone column")
+    if _table_exists(conn, "users") and not _column_exists(conn, "users", "phone"):
         try:
             conn.execute("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT NULL")
             conn.commit()
-            logger.info("  -> phone column added to 'users' successfully")
+            logger.info("Migrated 'users': added phone")
         except Exception as e:
-            logger.error(f"  -> Failed to add phone to 'users': {e}")
+            logger.error(f"Migration phone on 'users': {e}")
+
+    if _table_exists(conn, "users") and not _column_exists(conn, "users", "is_pro"):
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN is_pro INTEGER DEFAULT 0")
+            conn.commit()
+            logger.info("Migrated 'users': added is_pro column")
+        except Exception as e:
+            logger.error(f"Migration is_pro on 'users': {e}")
+
+    # Multi-account migrations
+    for table in ["income", "expenses"]:
+        if _table_exists(conn, table) and not _column_exists(conn, table, "account"):
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN account TEXT DEFAULT 'Geral'")
+                conn.commit()
+                logger.info(f"Migrated '{table}': added account column")
+            except Exception as e:
+                logger.error(f"Migration account on '{table}': {e}")
+
+
+# ─────────────────────────────────────────────────────────
+#  init_db
+# ─────────────────────────────────────────────────────────
 
 def init_db():
-    """Initialize the database by creating all required tables."""
+    """Create all tables (idempotent) and run migrations."""
     conn = get_connection()
-    c = conn.cursor()
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
+    ddl_statements = [
+        """CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             email TEXT UNIQUE NOT NULL,
             hashed_password TEXT NOT NULL,
             phone TEXT DEFAULT NULL,
+            is_pro INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
+        )""",
+        """CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER DEFAULT 1,
             salary REAL DEFAULT 0,
@@ -141,22 +267,27 @@ def init_db():
             budget_essential_pct REAL DEFAULT 50,
             budget_important_pct REAL DEFAULT 30,
             budget_optional_pct REAL DEFAULT 20
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS income (
+        )""",
+        """CREATE TABLE IF NOT EXISTS accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            type TEXT DEFAULT 'Conta Corrente',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS income (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER DEFAULT 1,
+            account TEXT DEFAULT 'Geral',
             name TEXT NOT NULL,
             amount REAL NOT NULL,
             date TEXT NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS expenses (
+        )""",
+        """CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER DEFAULT 1,
+            account TEXT DEFAULT 'Geral',
             description TEXT NOT NULL,
             amount REAL NOT NULL,
             category TEXT NOT NULL,
@@ -164,33 +295,40 @@ def init_db():
             date TEXT NOT NULL,
             notes TEXT DEFAULT '',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS portfolio (
+        )""",
+        """CREATE TABLE IF NOT EXISTS portfolio (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             ticker TEXT NOT NULL,
             quantity REAL NOT NULL,
             average_price REAL NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS notifications (
+        )""",
+        """CREATE TABLE IF NOT EXISTS notifications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             message TEXT NOT NULL,
             is_read INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
+        )""",
+    ]
 
-    # Run migration (adds user_id to pre-existing tables)
+    for stmt in ddl_statements:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception as e:
+            logger.error(f"init_db DDL error: {e}")
+
     _migrate(conn)
     conn.close()
+    logger.info("init_db complete.")
+
+
+# ─────────────────────────────────────────────────────────
+#  ensure_user_settings
+# ─────────────────────────────────────────────────────────
 
 def ensure_user_settings(user_id: int):
     """Create a default settings row for a user if one doesn't exist."""

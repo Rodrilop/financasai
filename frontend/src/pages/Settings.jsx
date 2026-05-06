@@ -1,17 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useContext } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../api/client'
+import { useToast } from '../contexts/ToastContext'
+import { AuthContext } from '../contexts/AuthContext'
 
 function fmt(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
 
 export default function Settings() {
+  const { user, refreshProfile } = useContext(AuthContext)
+  const { toast } = useToast()
   const [settings, setSettings]   = useState(null)
   const [income, setIncome]       = useState([])
-  const [newInc, setNewInc]       = useState({ name: '', amount: '' })
+  const [newInc, setNewInc]       = useState({ name: '', amount: '', account: 'Geral' })
   const [saved, setSaved]         = useState(false)
   const [loading, setLoading]     = useState(true)
   const [phone, setPhone]         = useState('')
   const [phoneSaved, setPhoneSaved] = useState(false)
+  const [accounts, setAccounts]   = useState([])
+  const [newAcc, setNewAcc]       = useState({ name: '', type: 'Conta Corrente' })
 
   const { month } = useOutletContext()
 
@@ -19,12 +25,14 @@ export default function Settings() {
     Promise.all([
       api.get('/api/settings'),
       api.get(`/api/income?month=${month || ''}`),
-      api.get('/api/profile')
+      api.get('/api/profile'),
+      api.get('/api/accounts')
     ])
-      .then(([s, i, p]) => {
+      .then(([s, i, p, a]) => {
         setSettings(s.data)
         setIncome(i.data)
         setPhone(p.data.phone || '')
+        setAccounts(a.data)
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -48,37 +56,39 @@ export default function Settings() {
 
   const addIncome = async () => {
     if (!newInc.name || !newInc.amount) return
-    const r = await api.post('/api/income', { 
-      name: newInc.name, 
-      amount: parseFloat(newInc.amount),
-      date: (month || new Date().toISOString().slice(0, 7)) + '-01'
-    })
-    setIncome(i => [...i, r.data])
-    setNewInc({ name: '', amount: '' })
+    await api.post('/api/income', { ...newInc, amount: parseFloat(newInc.amount), date: `${month}-01` })
+    setNewInc({ name: '', amount: '', account: 'Geral' })
+    const r = await api.get(`/api/income?month=${month || ''}`)
+    setIncome(r.data)
   }
 
   const removeIncome = async (id) => {
     await api.delete(`/api/income/${id}`)
-    setIncome(i => i.filter(x => x.id !== id))
+    setIncome(income.filter(i => i.id !== id))
   }
 
-  const [editIncId, setEditIncId] = useState(null)
-  const [editInc, setEditInc]     = useState({ name: '', amount: '' })
+  const addAccount = async () => {
+    if (!newAcc.name) return
+    await api.post('/api/accounts', newAcc)
+    setNewAcc({ name: '', type: 'Conta Corrente' })
+    const r = await api.get('/api/accounts')
+    setAccounts(r.data)
+  }
 
-  const startEditIncome = (i) => { setEditIncId(i.id); setEditInc({ name: i.name, amount: String(i.amount) }) }
-  const cancelEditIncome = () => { setEditIncId(null); setEditInc({ name: '', amount: '' }) }
+  const removeAccount = async (id) => {
+    if (!window.confirm('Excluir esta conta?')) return
+    await api.delete(`/api/accounts/${id}`)
+    setAccounts(accounts.filter(a => a.id !== id))
+  }
 
-  const saveEditIncome = async () => {
-    if (!editInc.name || !editInc.amount) return
+  const handleUpgrade = async () => {
     try {
-      const r = await api.put(`/api/income/${editIncId}`, {
-        name: editInc.name,
-        amount: parseFloat(editInc.amount),
-        date: (month || new Date().toISOString().slice(0, 7)) + '-01'
-      })
-      setIncome(list => list.map(x => x.id === editIncId ? r.data : x))
-      cancelEditIncome()
-    } catch { cancelEditIncome() }
+      await api.post('/api/auth/upgrade')
+      toast.success('🚀 Parabéns! Você agora é um usuário PRO.')
+      await refreshProfile()
+    } catch {
+      toast.error('Erro ao realizar upgrade.')
+    }
   }
 
   const set = (k, v) => setSettings(s => ({ ...s, [k]: v }))
@@ -91,6 +101,28 @@ export default function Settings() {
       <div className="page-header">
         <h1>⚙️ Configurações</h1>
         <p>Personalize seu perfil financeiro e metas</p>
+      </div>
+
+      {/* Plano Pro */}
+      <div className={`settings-section ${user?.isPro ? 'pro-active' : ''}`} style={{ background: user?.isPro ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(59, 130, 246, 0.1))' : 'var(--bg-card)', border: user?.isPro ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {user?.isPro ? '💎 Plano Pro Ativo' : '🚀 Upgrade para o Pro'}
+              {user?.isPro && <span className="badge badge-purple" style={{ fontSize: 10 }}>PREMIUM</span>}
+            </h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
+              {user?.isPro 
+                ? 'Você tem acesso ilimitado a todas as ferramentas e análises avançadas da IA.' 
+                : 'Libere recomendações personalizadas, suporte a multi-contas e insights de mercado ilimitados.'}
+            </p>
+          </div>
+          {!user?.isPro && (
+            <button className="btn btn-primary" onClick={handleUpgrade} style={{ padding: '10px 20px', fontWeight: 700 }}>
+              Virar Pro — Grátis
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Perfil / WhatsApp */}
@@ -118,46 +150,59 @@ export default function Settings() {
         )}
       </div>
 
+      {/* Accounts */}
+      <div className="settings-section">
+        <h3>🏦 Minhas Contas</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+          Gerencie as contas bancárias e carteiras que você utiliza.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+          {accounts.map(acc => (
+            <div key={acc.id} className="card" style={{ padding: '12px 16px', position: 'relative' }}>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>{acc.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{acc.type}</div>
+              <button className="btn-icon" onClick={() => removeAccount(acc.id)} 
+                style={{ position: 'absolute', top: 8, right: 8, padding: 4, fontSize: 12 }}>🗑️</button>
+            </div>
+          ))}
+          {accounts.length === 0 && <div className="text-muted" style={{ fontSize: 13, gridColumn: '1/-1' }}>Nenhuma conta cadastrada.</div>}
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <input className="form-control" placeholder="Nome da conta (ex: Nubank)" value={newAcc.name} onChange={e => setNewAcc({ ...newAcc, name: e.target.value })} />
+          <select className="form-control" value={newAcc.type} onChange={e => setNewAcc({ ...newAcc, type: e.target.value })} style={{ maxWidth: 160 }}>
+            <option>Conta Corrente</option>
+            <option>Poupança</option>
+            <option>Investimentos</option>
+            <option>Dinheiro</option>
+          </select>
+          <button className="btn btn-secondary" onClick={addAccount}>+ Adicionar</button>
+        </div>
+      </div>
+
       {/* Income */}
       <div className="settings-section">
         <h3>💼 Receitas do Mês</h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
-          Lance aqui todas as suas receitas deste mês (ex: Salário, Freelance, Rendimentos).
-        </p>
-        <div>
-          {income.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>
-              ⚠️ Nenhuma receita lançada este mês. Lance seu salário e outras rendas aqui.
-            </div>
-          )}
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>Registre todas as entradas de dinheiro para o mês de {month}.</p>
+        
+        <div className="income-list" style={{ marginBottom: 16 }}>
           {income.map(i => (
-            <div key={i.id} className="income-item" style={{ alignItems: 'center', gap: 8 }}>
-              {editIncId === i.id ? (
-                <>
-                  <input className="form-control" style={{ flex: 1 }} value={editInc.name}
-                    onChange={e => setEditInc(n => ({ ...n, name: e.target.value }))} />
-                  <input className="form-control" type="number" style={{ maxWidth: 130 }} value={editInc.amount}
-                    onChange={e => setEditInc(n => ({ ...n, amount: e.target.value }))} />
-                  <button className="btn btn-primary btn-sm" onClick={saveEditIncome}>✓</button>
-                  <button className="btn btn-secondary btn-sm" onClick={cancelEditIncome}>Cancelar</button>
-                </>
-              ) : (
-                <>
-                  <span className="income-name">{i.name}</span>
-                  <span className="income-amount">{fmt(i.amount)}</span>
-                  <button className="btn-icon" onClick={() => startEditIncome(i)} title="Editar">✏️</button>
-                  <button className="btn-icon" onClick={() => removeIncome(i.id)} title="Excluir">🗑️</button>
-                </>
-              )}
+            <div key={i.id} className="income-item">
+              <div className="income-name">{i.name} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({i.account})</span></div>
+              <div className="income-amount">{fmt(i.amount)}</div>
+              <button className="btn-icon" onClick={() => removeIncome(i.id)}>🗑️</button>
             </div>
           ))}
-          <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-            <input className="form-control" placeholder="Nome da receita (ex: Salário)"
-              value={newInc.name} onChange={e => setNewInc(n => ({ ...n, name: e.target.value }))} />
-            <input className="form-control" type="number" placeholder="Valor (R$)" style={{ maxWidth: 150 }}
-              value={newInc.amount} onChange={e => setNewInc(n => ({ ...n, amount: e.target.value }))} />
-            <button className="btn btn-secondary" onClick={addIncome}>+ Adicionar</button>
-          </div>
+          {income.length === 0 && <div className="text-muted" style={{ fontSize: 13 }}>Nenhuma receita registrada para este mês.</div>}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <input className="form-control" placeholder="Nome (Ex: Salário)" value={newInc.name} onChange={e => setNewInc({ ...newInc, name: e.target.value })} />
+          <input className="form-control" type="number" placeholder="Valor" value={newInc.amount} onChange={e => setNewInc({ ...newInc, amount: e.target.value })} style={{ maxWidth: 120 }} />
+          <select className="form-control" value={newInc.account} onChange={e => setNewInc({ ...newInc, account: e.target.value })} style={{ maxWidth: 140 }}>
+            <option value="Geral">Conta Geral</option>
+            {accounts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+          </select>
+          <button className="btn btn-primary" onClick={addIncome}>+ Adicionar</button>
         </div>
       </div>
 

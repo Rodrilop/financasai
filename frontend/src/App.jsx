@@ -44,7 +44,12 @@ function Sidebar({ month }) {
         ))}
       </nav>
       <div className="sidebar-footer">
-        {user && <div className="sidebar-user">👤 {user.name}</div>}
+        {user && (
+          <div className="sidebar-user">
+            👤 {user.name} 
+            {user.isPro && <span className="badge badge-purple" style={{ marginLeft: 6, fontSize: 9 }}>PRO</span>}
+          </div>
+        )}
         <button onClick={logout} className="nav-item" style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', marginTop: '1rem', color: '#ff4d4f'}}>
           <span className="icon">🚪</span> Sair
         </button>

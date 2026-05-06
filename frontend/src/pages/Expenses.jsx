@@ -22,7 +22,7 @@ const makeEmptyForm = (month) => {
     const [y, m] = base.split('-')
     date = `${y}-${m}-01`
   }
-  return { description: '', amount: '', category: 'Alimentação', priority: 'Essencial', date, notes: '' }
+  return { description: '', amount: '', category: 'Alimentação', priority: 'Essencial', date, notes: '', account: 'Geral' }
 }
 
 export default function Expenses() {
@@ -36,6 +36,8 @@ export default function Expenses() {
   const { month } = useOutletContext()
   const [filters, setFilters] = useState({ q: '', category: '', priority: '' })
   const [settings, setSettings] = useState({})
+  const [importing, setImporting] = useState(false)
+  const [accounts, setAccounts] = useState([])
 
   const load = useCallback(() => {
     const p = { ...filters, month: month || '' }
@@ -44,10 +46,13 @@ export default function Expenses() {
   }, [filters, month])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { api.get('/api/settings').then(r => setSettings(r.data)).catch(() => {}) }, [])
+  useEffect(() => { 
+    api.get('/api/settings').then(r => setSettings(r.data)).catch(() => {})
+    api.get('/api/accounts').then(r => setAccounts(r.data)).catch(() => {})
+  }, [])
 
   const openAdd = () => { setForm(makeEmptyForm(month)); setEditId(null); setModal('form') }
-  const openEdit = (e) => { setForm({ description:e.description, amount:String(e.amount), category:e.category, priority:e.priority, date:e.date, notes:e.notes||'' }); setEditId(e.id); setModal('form') }
+  const openEdit = (e) => { setForm({ description:e.description, amount:String(e.amount), category:e.category, priority:e.priority, date:e.date, notes:e.notes||'', account: e.account || 'Geral' }); setEditId(e.id); setModal('form') }
   
   const save = async () => {
     const body = { ...form, amount: parseFloat(form.amount) || 0 }
@@ -91,6 +96,28 @@ export default function Expenses() {
     }
   }
 
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    setImporting(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    try {
+      const res = await api.post('/api/expenses/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      toast.success(`✅ ${res.data.count} despesas importadas com sucesso!`)
+      load()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Erro ao importar CSV.')
+    } finally {
+      setImporting(false)
+      e.target.value = '' // reset input
+    }
+  }
+
   const toggle = (id) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
   const toggleAll = () => setSelected(s => s.length === expenses.length ? [] : expenses.map(e => e.id))
 
@@ -118,6 +145,12 @@ export default function Expenses() {
         </select>
 
         <button className="btn btn-primary" onClick={openAdd}>+ Adicionar</button>
+        
+        <label className={`btn btn-secondary ${importing ? 'disabled' : ''}`} style={{ cursor: 'pointer' }}>
+          {importing ? '⌛ Importando...' : '📤 Importar CSV'}
+          <input type="file" accept=".csv" onChange={handleImport} hidden disabled={importing} />
+        </label>
+
         {selected.length > 0 && <button className="btn btn-danger btn-sm" onClick={bulkDelete}>🗑️ Excluir {selected.length}</button>}
       </div>
 
@@ -193,6 +226,13 @@ export default function Expenses() {
               <label>Prioridade</label>
               <select className="form-control" value={form.priority} onChange={e => setForm(f=>({...f,priority:e.target.value}))}>
                 {PRIORITIES.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Conta</label>
+              <select className="form-control" value={form.account} onChange={e => setForm(f=>({...f,account:e.target.value}))}>
+                <option value="Geral">Conta Geral</option>
+                {accounts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
               </select>
             </div>
             <div className="form-group" style={{gridColumn:'1/-1'}}>

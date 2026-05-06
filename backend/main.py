@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -6,6 +6,8 @@ from typing import Optional, List
 from datetime import datetime
 import os
 import logging
+import csv
+import io
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -67,18 +69,24 @@ class SettingsIn(BaseModel):
     budget_important_pct: float = Field(30, ge=0, le=100)
     budget_optional_pct: float = Field(20, ge=0, le=100)
 
+class AccountIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+    type: str = Field("Conta Corrente", max_length=30)
+
 class IncomeIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     amount: float = Field(..., gt=0)
-    date: str = Field(..., max_length=10)
+    date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    account: Optional[str] = "Geral"
 
 class ExpenseIn(BaseModel):
-    description: str = Field(..., min_length=1, max_length=255)
+    description: str = Field(..., min_length=1, max_length=200)
     amount: float = Field(..., gt=0)
-    category: str = Field(..., min_length=1, max_length=50)
-    priority: str = Field(..., min_length=1, max_length=20)
-    date: str = Field(..., max_length=10)
-    notes: Optional[str] = Field("", max_length=500)
+    category: str
+    priority: str
+    date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    notes: Optional[str] = ""
+    account: Optional[str] = "Geral"
 
 class PortfolioItemIn(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=10)
@@ -137,17 +145,26 @@ def login(user: UserLogin):
     # Ensure settings exist (safety net for pre-existing users)
     ensure_user_settings(db_user["id"])
     access_token = create_access_token(data={"sub": db_user["email"]})
-    return {"access_token": access_token, "token_type": "bearer", "name": db_user["name"], "phone": db_user["phone"]}
+    return {"access_token": access_token, "token_type": "bearer", "name": db_user["name"], "phone": db_user["phone"], "is_pro": bool(db_user["is_pro"])}
 
 @app.get("/api/profile")
 def get_profile(user: dict = Depends(get_current_user)):
     """Return the authenticated user's profile info."""
     conn = get_connection()
-    row = conn.execute("SELECT id, name, email, phone FROM users WHERE id=?", (user["id"],)).fetchone()
+    row = conn.execute("SELECT id, name, email, phone, is_pro FROM users WHERE id=?", (user["id"],)).fetchone()
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    return {"id": row["id"], "name": row["name"], "email": row["email"], "phone": row["phone"]}
+    return {"id": row["id"], "name": row["name"], "email": row["email"], "phone": row["phone"], "is_pro": bool(row["is_pro"])}
+
+@app.post("/api/auth/upgrade")
+def upgrade_user(user: dict = Depends(get_current_user)):
+    """Simulate upgrading to Pro."""
+    conn = get_connection()
+    conn.execute("UPDATE users SET is_pro=1 WHERE id=?", (user["id"],))
+    conn.commit()
+    conn.close()
+    return {"ok": True, "message": "Parabéns! Você agora é um usuário PRO."}
 
 @app.put("/api/profile")
 def update_profile(data: ProfileIn, user: dict = Depends(get_current_user)):
@@ -163,6 +180,34 @@ def update_profile(data: ProfileIn, user: dict = Depends(get_current_user)):
     conn.close()
     logger.info(f"Updated phone for user_id={uid}: {clean_phone}")
     return {"ok": True, "phone": clean_phone or None}
+
+# ── Accounts ──────────────────────────────────────────────────────────────────
+
+@app.get("/api/accounts")
+def read_accounts(user: dict = Depends(get_current_user)):
+    uid = user["id"]
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM accounts WHERE user_id=? ORDER BY name ASC", (uid,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.post("/api/accounts")
+def add_account(data: AccountIn, user: dict = Depends(get_current_user)):
+    uid = user["id"]
+    conn = get_connection()
+    cur = conn.execute("INSERT INTO accounts (user_id, name, type) VALUES (?, ?, ?)", (uid, data.name, data.type))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return {"id": new_id, **data.dict()}
+
+@app.delete("/api/accounts/{account_id}")
+def delete_account(account_id: int, user: dict = Depends(get_current_user)):
+    conn = get_connection()
+    conn.execute("DELETE FROM accounts WHERE id=? AND user_id=?", (account_id, user["id"]))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
 
 # ── Settings ─────────────────────────────────────────────────────────────────
 
@@ -220,8 +265,8 @@ def add_income(data: IncomeIn, user: dict = Depends(get_current_user)):
     logger.info(f"Adding income for user_id: {uid}, amount: {data.amount}")
     conn = get_connection()
     cur = conn.execute(
-        "INSERT INTO income (user_id, name, amount, date) VALUES (?, ?, ?, ?)",
-        (uid, data.name, data.amount, data.date)
+        "INSERT INTO income (user_id, account, name, amount, date) VALUES (?, ?, ?, ?, ?)",
+        (uid, data.account or 'Geral', data.name, data.amount, data.date)
     )
     conn.commit()
     new_id = cur.lastrowid
@@ -241,8 +286,8 @@ def update_income(income_id: int, data: IncomeIn, user: dict = Depends(get_curre
     """Edit an existing income record."""
     conn = get_connection()
     conn.execute(
-        "UPDATE income SET name=?, amount=?, date=? WHERE id=? AND user_id=?",
-        (data.name, data.amount, data.date, income_id, user["id"])
+        "UPDATE income SET account=?, name=?, amount=?, date=? WHERE id=? AND user_id=?",
+        (data.account or 'Geral', data.name, data.amount, data.date, income_id, user["id"])
     )
     conn.commit()
     conn.close()
@@ -279,8 +324,8 @@ def add_expense(data: ExpenseIn, user: dict = Depends(get_current_user)):
     logger.info(f"Adding expense for user_id: {uid}, amount: {data.amount}, category: {data.category}")
     conn = get_connection()
     cur = conn.execute(
-        "INSERT INTO expenses (user_id, description, amount, category, priority, date, notes) VALUES (?,?,?,?,?,?,?)",
-        (uid, data.description, data.amount, data.category, data.priority, data.date, data.notes)
+        "INSERT INTO expenses (user_id, account, description, amount, category, priority, date, notes) VALUES (?,?,?,?,?,?,?,?)",
+        (uid, data.account or 'Geral', data.description, data.amount, data.category, data.priority, data.date, data.notes)
     )
     conn.commit()
     new_id = cur.lastrowid
@@ -291,8 +336,8 @@ def add_expense(data: ExpenseIn, user: dict = Depends(get_current_user)):
 def update_expense(expense_id: int, data: ExpenseIn, user: dict = Depends(get_current_user)):
     conn = get_connection()
     conn.execute(
-        "UPDATE expenses SET description=?,amount=?,category=?,priority=?,date=?,notes=? WHERE id=? AND user_id=?",
-        (data.description, data.amount, data.category, data.priority, data.date, data.notes,
+        "UPDATE expenses SET account=?, description=?,amount=?,category=?,priority=?,date=?,notes=? WHERE id=? AND user_id=?",
+        (data.account or 'Geral', data.description, data.amount, data.category, data.priority, data.date, data.notes,
          expense_id, user["id"])
     )
     conn.commit()
@@ -306,6 +351,89 @@ def delete_expense(expense_id: int, user: dict = Depends(get_current_user)):
     conn.commit()
     conn.close()
     return {"ok": True}
+
+@app.post("/api/expenses/import")
+async def import_expenses(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """Import expenses from a CSV file."""
+    uid = user["id"]
+    content = await file.read()
+    decoded = content.decode("utf-8-sig") # handles UTF-8 BOM
+    f = io.StringIO(decoded)
+    reader = csv.DictReader(f, delimiter=None) # detect delimiter automatically in some cases, or default to comma
+    
+    # Try common delimiters if comma fails to find columns
+    if not reader.fieldnames or len(reader.fieldnames) < 2:
+        f.seek(0)
+        reader = csv.DictReader(f, delimiter=';')
+        
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="Formato CSV inválido ou cabeçalhos não encontrados.")
+
+    # Mapping logic (Case-insensitive)
+    cols = {name.lower(): name for name in reader.fieldnames}
+    date_col = next((cols[k] for k in ['data', 'date', 'vencimento'] if k in cols), None)
+    desc_col = next((cols[k] for k in ['descrição', 'descricao', 'description', 'histórico', 'historico'] if k in cols), None)
+    val_col  = next((cols[k] for k in ['valor', 'amount', 'total', 'preço', 'preco'] if k in cols), None)
+    cat_col  = next((cols[k] for k in ['categoria', 'category'] if k in cols), None)
+
+    if not all([date_col, desc_col, val_col]):
+        raise HTTPException(status_code=400, detail=f"Colunas obrigatórias (Data, Descrição, Valor) não encontradas. Cabeçalhos detectados: {list(reader.fieldnames)}")
+
+    expenses_to_add = []
+    for row in reader:
+        try:
+            # Clean amount
+            raw_val = row[val_col].replace('R$', '').replace('.', '').replace(',', '.').strip()
+            amount = abs(float(raw_val))
+            
+            # Skip positive values if they are credits in a generic bank statement (optional logic)
+            # if float(raw_val) > 0: continue 
+
+            # Normalize date
+            raw_date = row[date_col].strip()
+            # Simple parser for common formats: DD/MM/YYYY or YYYY-MM-DD
+            if '/' in raw_date:
+                parts = raw_date.split('/')
+                if len(parts[0]) == 4: # YYYY/MM/DD
+                    d_obj = datetime.strptime(raw_date, "%Y/%m/%d")
+                else: # DD/MM/YYYY
+                    d_obj = datetime.strptime(raw_date, "%d/%m/%Y")
+            else:
+                d_obj = datetime.fromisoformat(raw_date)
+            
+            clean_date = d_obj.strftime("%Y-%m-%d")
+            
+            expenses_to_add.append((
+                uid,
+                row[desc_col].strip(),
+                amount,
+                row.get(cat_col, 'Outros').strip() if cat_col else 'Outros',
+                'Essencial', # Default
+                clean_date,
+                'Importado via CSV'
+            ))
+        except Exception as e:
+            logger.warning(f"Error parsing CSV row: {e} | Row: {row}")
+            continue
+
+    if not expenses_to_add:
+        raise HTTPException(status_code=400, detail="Nenhuma despesa válida encontrada no arquivo.")
+
+    conn = get_connection()
+    # Batch insert is more efficient but our proxy doesn't have executemany yet
+    # We'll use simple loops for now as Turso HTTP handles one by one or we could add batch support later
+    count = 0
+    for exp in expenses_to_add:
+        conn.execute(
+            "INSERT INTO expenses (user_id, description, amount, category, priority, date, notes) VALUES (?,?,?,?,?,?,?)",
+            exp
+        )
+        count += 1
+    
+    conn.commit()
+    conn.close()
+    
+    return {"ok": True, "count": count}
 
 @app.post("/api/expenses/bulk-delete")
 def bulk_delete(data: BulkDeleteIn, user: dict = Depends(get_current_user)):

@@ -645,3 +645,38 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .ob-actions { display: flex; gap: 10px; margin-top: 8px; }
 .ob-actions .btn-secondary { flex-shrink: 0; }
 .ob-actions .ob-btn { flex: 1; margin-top: 0; }
+
+/* Premium / Pro Styles */
+.badge-purple {
+  background: linear-gradient(135deg, #8b5cf6, #d946ef);
+  color: white;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+}
+
+.pro-active {
+  position: relative;
+  overflow: hidden;
+}
+
+.pro-active::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg, transparent, rgba(255,255,255,0.03), transparent);
+  transform: rotate(45deg);
+  animation: shine 10s infinite linear;
+  pointer-events: none;
+}
+
+@keyframes shine {
+  0% { transform: translateX(-100%) rotate(45deg); }
+  20% { transform: translateX(100%) rotate(45deg); }
+  100% { transform: translateX(100%) rotate(45deg); }
+}
+
+.settings-section.pro-active h3 {
+  color: #a78bfa;
+}

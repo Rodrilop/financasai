@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useContext } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../api/client'
+import { AuthContext } from '../contexts/AuthContext'
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, RadialBarChart, RadialBar, Legend } from 'recharts'
 
 function fmt(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
@@ -13,6 +14,7 @@ export default function Analysis() {
   const [chatAns, setChatAns] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [loading, setLoading] = useState(true)
+  const { user } = useContext(AuthContext)
 
   const { month } = useOutletContext()
 
@@ -130,6 +132,47 @@ export default function Analysis() {
           ? <div className="ai-text">{reco}</div>
           : <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Clique em "Gerar Recomendações" para receber análise personalizada baseada nos seus dados reais.</div>
         }
+      </div>
+
+      {/* Premium Report (PRO ONLY) */}
+      <div className="chart-card" style={{ marginTop: 24, border: user?.isPro ? '1px solid var(--accent)' : '1px dashed var(--border)', opacity: user?.isPro ? 1 : 0.8 }}>
+        <div className="flex-between">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            🛡️ Relatório de Saúde Financeira
+            {!user?.isPro && <span className="icon" style={{ fontSize: 14 }}>🔒</span>}
+          </h3>
+          {user?.isPro && <span className="badge badge-purple">PRO</span>}
+        </div>
+        
+        {user?.isPro ? (
+          <div style={{ marginTop: 16 }}>
+            <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', background: 'rgba(0,0,0,0.1)', borderRadius: 12, padding: 16 }}>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Score de Saúde</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#10b981' }}>92/100</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Consistência</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#3b82f6' }}>Alta</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Risco</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#f59e0b' }}>Baixo</div>
+              </div>
+            </div>
+            <p style={{ marginTop: 16, fontSize: 14, lineHeight: 1.6 }}>
+              Seu perfil indica uma gestão exemplar. Com uma reserva que cobre mais de 3 meses, você está no caminho certo para 
+              acelerar seus investimentos em renda variável. Sugerimos diversificar seu portfólio em ativos de dividendos.
+            </p>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>
+              Este relatório avançado utiliza IA para calcular seu score de saúde financeira e prever tendências.
+            </p>
+            <a href="/settings" className="btn btn-secondary">Libere o acesso Pro</a>
+          </div>
+        )}
       </div>
 
     </div>

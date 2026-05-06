@@ -43,11 +43,11 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
             raise HTTPException(status_code=401, detail="Token inválido")
         # Fetch the numeric user id from the database
         conn = get_connection()
-        row = conn.execute("SELECT id FROM users WHERE email=?", (user_email,)).fetchone()
+        row = conn.execute("SELECT id, is_pro FROM users WHERE email=?", (user_email,)).fetchone()
         conn.close()
         if row is None:
             raise HTTPException(status_code=401, detail="Usuário não encontrado")
-        return {"id": row["id"], "email": user_email}
+        return {"id": row["id"], "email": user_email, "is_pro": bool(row["is_pro"])}
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expirado")
     except jwt.InvalidTokenError:

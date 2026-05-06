@@ -148,19 +148,38 @@ export default function Dashboard() {
       </div>
 
       {/* ── Barra de Comprometimento (animação de preenchimento) ── */}
-      <div className="progress-bar-container chart-card" style={{ marginBottom: 16, animation: 'fadeInUp 500ms 280ms var(--ease-out) both' }}>
-        <div className="chart-title">🎯 Comprometimento do salário</div>
-        <div className="progress-track">
-          <div className="progress-segment" style={{ width: essPct + '%', background: '#10b981', animation: 'progressFill 1.2s 400ms ease both' }} title={`Essencial ${essPct.toFixed(1)}%`} />
-          <div className="progress-segment" style={{ width: impPct + '%', background: '#f59e0b', animation: 'progressFill 1.2s 550ms ease both' }} title={`Importante ${impPct.toFixed(1)}%`} />
-          <div className="progress-segment" style={{ width: optPct + '%', background: '#ef4444', animation: 'progressFill 1.2s 700ms ease both' }} title={`Opcional ${optPct.toFixed(1)}%`} />
-          <div className="progress-segment" style={{ width: freePct + '%', background: 'var(--border)', animation: 'progressFill 1.2s 850ms ease both' }} title={`Livre ${freePct.toFixed(1)}%`} />
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 16 }}>
+        
+        <div className="progress-bar-container chart-card" style={{ marginBottom: 0, animation: 'fadeInUp 500ms 280ms var(--ease-out) both' }}>
+          <div className="chart-title">🎯 Comprometimento do salário</div>
+          <div className="progress-track">
+            <div className="progress-segment" style={{ width: essPct + '%', background: '#10b981', animation: 'progressFill 1.2s 400ms ease both' }} title={`Essencial ${essPct.toFixed(1)}%`} />
+            <div className="progress-segment" style={{ width: impPct + '%', background: '#f59e0b', animation: 'progressFill 1.2s 550ms ease both' }} title={`Importante ${impPct.toFixed(1)}%`} />
+            <div className="progress-segment" style={{ width: optPct + '%', background: '#ef4444', animation: 'progressFill 1.2s 700ms ease both' }} title={`Opcional ${optPct.toFixed(1)}%`} />
+            <div className="progress-segment" style={{ width: freePct + '%', background: 'var(--border)', animation: 'progressFill 1.2s 850ms ease both' }} title={`Livre ${freePct.toFixed(1)}%`} />
+          </div>
+          <div className="progress-legend">
+            {[['#10b981','Essencial',essPct],['#f59e0b','Importante',impPct],['#ef4444','Opcional',optPct],['var(--border)','Disponível',freePct]].map(([c,l,p]) => (
+              <div key={l} className="legend-item"><div className="legend-dot" style={{ background: c }} />{l} {p.toFixed(1)}%</div>
+            ))}
+          </div>
         </div>
-        <div className="progress-legend">
-          {[['#10b981','Essencial',essPct],['#f59e0b','Importante',impPct],['#ef4444','Opcional',optPct],['var(--border)','Disponível',freePct]].map(([c,l,p]) => (
-            <div key={l} className="legend-item"><div className="legend-dot" style={{ background: c }} />{l} {p.toFixed(1)}%</div>
-          ))}
+
+        <div className="chart-card" style={{ animation: 'fadeInUp 500ms 350ms var(--ease-out) both', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div className="chart-title">🛡️ Reserva de Emergência</div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
+            {fmt(data.emergency_current)} <small style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>de {fmt(data.emergency_goal)}</small>
+          </div>
+          <div className="progress-thin" style={{ height: 8 }}>
+            <div className="progress-fill" style={{ width: Math.min(100, (data.emergency_current / (data.emergency_goal || 1)) * 100) + '%' }} />
+          </div>
+          <div style={{ fontSize: 11, marginTop: 8, color: 'var(--text-muted)' }}>
+            {data.emergency_goal > 0 
+              ? `${Math.min(100, (data.emergency_current / data.emergency_goal) * 100).toFixed(1)}% da meta atingida`
+              : 'Defina uma meta em Configurações'}
+          </div>
         </div>
+
       </div>
 
       {/* ── Gráficos ── */}
