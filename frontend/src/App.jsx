@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom'
-import { useContext, useEffect, useState } from 'react'
+import { useContext, useEffect, useState, useMemo } from 'react'
 import api from './api/client'
 import Dashboard from './pages/Dashboard'
 import Expenses from './pages/Expenses'
@@ -43,7 +43,6 @@ function Sidebar({ month }) {
         ))}
       </nav>
       <div className="sidebar-footer">
-        <div className="sidebar-month">📅 {month || 'Sem mês definido'}</div>
         {user && <div className="sidebar-user">👤 {user.name}</div>}
         <button onClick={logout} className="nav-item" style={{background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', marginTop: '1rem', color: '#ff4d4f'}}>
           <span className="icon">🚪</span> Sair
@@ -53,19 +52,44 @@ function Sidebar({ month }) {
   )
 }
 
+function MonthSelector({ month, setMonth }) {
+  const handlePrev = () => {
+    if (!month) return;
+    const [y, m] = month.split('-');
+    let date = new Date(y, parseInt(m) - 2);
+    setMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+  }
+  const handleNext = () => {
+    if (!month) return;
+    const [y, m] = month.split('-');
+    let date = new Date(y, parseInt(m));
+    setMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+  }
+
+  const monthLabel = useMemo(() => {
+    if (!month) return '';
+    const [y, m] = month.split('-');
+    const date = new Date(y, parseInt(m) - 1);
+    const mName = date.toLocaleString('pt-BR', { month: 'long' });
+    return `${mName.charAt(0).toUpperCase() + mName.slice(1)} ${y}`;
+  }, [month]);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', padding: '1rem', background: 'var(--bg-card)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 10 }}>
+      <button onClick={handlePrev} className="btn btn-secondary btn-sm" style={{ padding: '4px 12px' }}>&lt;</button>
+      <span style={{ fontWeight: 600, minWidth: 120, textAlign: 'center' }}>📅 {monthLabel}</span>
+      <button onClick={handleNext} className="btn btn-secondary btn-sm" style={{ padding: '4px 12px' }}>&gt;</button>
+    </div>
+  )
+}
+
 function ProtectedApp() {
   const { user, loading } = useContext(AuthContext);
-  const [month, setMonth] = useState('')
+  const currentYm = new Date().toISOString().slice(0, 7);
+  const [month, setMonth] = useState(currentYm)
 
-  // Re-fetch settings whenever the logged-in user changes (key dependency: user?.name)
   useEffect(() => {
-    if (!user) {
-      setMonth('')
-      return
-    }
-    api.get('/api/settings').then(r => {
-      setMonth(r.data.reference_month || '')
-    }).catch(() => {})
+    if (!user) setMonth(currentYm)
   }, [user])
 
   if (loading) return <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh'}}>Carregando...</div>;
@@ -77,9 +101,12 @@ function ProtectedApp() {
       <div className="mobile-header">
         <span>FinançasAI</span>
       </div>
-      <Sidebar month={month} />
-      <main className="main-content">
-        <Outlet context={{ setMonth }} />
+      <Sidebar />
+      <main className="main-content" style={{ padding: 0 }}>
+        <MonthSelector month={month} setMonth={setMonth} />
+        <div style={{ padding: '1.5rem' }}>
+          <Outlet context={{ month, setMonth }} />
+        </div>
       </main>
     </div>
   );

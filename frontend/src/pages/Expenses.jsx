@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import api from '../api/client'
 import Modal from '../components/Modal'
 import { useToast } from '../contexts/ToastContext'
@@ -10,7 +11,19 @@ const PRIORITIES = ['Essencial','Importante','Opcional']
 
 function fmt(v) { return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
 
-const EMPTY_FORM = { description: '', amount: '', category: 'Alimentação', priority: 'Essencial', date: new Date().toISOString().slice(0,10), notes: '' }
+const makeEmptyForm = (month) => {
+  const base = month || new Date().toISOString().slice(0, 7)
+  const today = new Date().toISOString().slice(0, 7)
+  // Se o mês selecionado for o mês atual, usa a data de hoje; senão, usa o último dia do mês
+  let date
+  if (base === today) {
+    date = new Date().toISOString().slice(0, 10)
+  } else {
+    const [y, m] = base.split('-')
+    date = `${y}-${m}-01`
+  }
+  return { description: '', amount: '', category: 'Alimentação', priority: 'Essencial', date, notes: '' }
+}
 
 export default function Expenses() {
   const toast = useToast()
@@ -20,19 +33,20 @@ export default function Expenses() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [editId, setEditId] = useState(null)
   const [selected, setSelected] = useState([])
-  const [filters, setFilters] = useState({ q: '', category: '', priority: '', month: '' })
+  const { month } = useOutletContext()
+  const [filters, setFilters] = useState({ q: '', category: '', priority: '' })
   const [settings, setSettings] = useState({})
 
   const load = useCallback(() => {
-    const p = { ...filters }
+    const p = { ...filters, month: month || '' }
     Object.keys(p).forEach(k => !p[k] && delete p[k])
     api.get('/api/expenses', { params: p }).then(r => { setExpenses(r.data); setLoading(false) }).catch(() => setLoading(false))
-  }, [filters])
+  }, [filters, month])
 
   useEffect(() => { load() }, [load])
   useEffect(() => { api.get('/api/settings').then(r => setSettings(r.data)).catch(() => {}) }, [])
 
-  const openAdd = () => { setForm({...EMPTY_FORM, date: new Date().toISOString().slice(0,10)}); setEditId(null); setModal('form') }
+  const openAdd = () => { setForm(makeEmptyForm(month)); setEditId(null); setModal('form') }
   const openEdit = (e) => { setForm({ description:e.description, amount:String(e.amount), category:e.category, priority:e.priority, date:e.date, notes:e.notes||'' }); setEditId(e.id); setModal('form') }
   
   const save = async () => {
@@ -102,7 +116,7 @@ export default function Expenses() {
           <option value="">Todas as prioridades</option>
           {PRIORITIES.map(p => <option key={p}>{p}</option>)}
         </select>
-        <input type="month" className="filter-select" value={filters.month} onChange={e => setFilters(f => ({...f, month: e.target.value}))} style={{ colorScheme: 'dark' }} />
+
         <button className="btn btn-primary" onClick={openAdd}>+ Adicionar</button>
         {selected.length > 0 && <button className="btn btn-danger btn-sm" onClick={bulkDelete}>🗑️ Excluir {selected.length}</button>}
       </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import api from '../api/client'
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, RadialBarChart, RadialBar, Legend } from 'recharts'
 
@@ -13,13 +14,16 @@ export default function Analysis() {
   const [chatLoading, setChatLoading] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  const { month } = useOutletContext()
+
   useEffect(() => {
-    api.get('/api/analysis').then(r => { setData(r.data); setLoading(false) }).catch(() => setLoading(false))
-  }, [])
+    setLoading(true)
+    api.get(`/api/analysis?month=${month || ''}`).then(r => { setData(r.data); setLoading(false) }).catch(() => setLoading(false))
+  }, [month])
 
   const loadReco = () => {
     setRecoLoading(true)
-    api.get('/api/analysis/recommendations').then(r => { setReco(r.data.text); setRecoLoading(false) }).catch(() => setRecoLoading(false))
+    api.get(`/api/analysis/recommendations?month=${month || ''}`).then(r => { setReco(r.data.text); setRecoLoading(false) }).catch(() => setRecoLoading(false))
   }
 
   const sendChat = async () => {

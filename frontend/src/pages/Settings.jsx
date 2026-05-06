@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import api from '../api/client'
 
 function fmt(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
@@ -10,11 +11,13 @@ export default function Settings() {
   const [saved, setSaved]         = useState(false)
   const [loading, setLoading]     = useState(true)
 
+  const { month } = useOutletContext()
+
   useEffect(() => {
-    Promise.all([api.get('/api/settings'), api.get('/api/income')])
+    Promise.all([api.get('/api/settings'), api.get(`/api/income?month=${month || ''}`)])
       .then(([s, i]) => { setSettings(s.data); setIncome(i.data); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [])
+  }, [month])
 
   const save = async () => {
     await api.put('/api/settings', settings)
@@ -24,7 +27,11 @@ export default function Settings() {
 
   const addIncome = async () => {
     if (!newInc.name || !newInc.amount) return
-    const r = await api.post('/api/income', { name: newInc.name, amount: parseFloat(newInc.amount) })
+    const r = await api.post('/api/income', { 
+      name: newInc.name, 
+      amount: parseFloat(newInc.amount),
+      date: (month || new Date().toISOString().slice(0, 7)) + '-01'
+    })
     setIncome(i => [...i, r.data])
     setNewInc({ name: '', amount: '' })
   }
@@ -32,6 +39,25 @@ export default function Settings() {
   const removeIncome = async (id) => {
     await api.delete(`/api/income/${id}`)
     setIncome(i => i.filter(x => x.id !== id))
+  }
+
+  const [editIncId, setEditIncId] = useState(null)
+  const [editInc, setEditInc]     = useState({ name: '', amount: '' })
+
+  const startEditIncome = (i) => { setEditIncId(i.id); setEditInc({ name: i.name, amount: String(i.amount) }) }
+  const cancelEditIncome = () => { setEditIncId(null); setEditInc({ name: '', amount: '' }) }
+
+  const saveEditIncome = async () => {
+    if (!editInc.name || !editInc.amount) return
+    try {
+      const r = await api.put(`/api/income/${editIncId}`, {
+        name: editInc.name,
+        amount: parseFloat(editInc.amount),
+        date: (month || new Date().toISOString().slice(0, 7)) + '-01'
+      })
+      setIncome(list => list.map(x => x.id === editIncId ? r.data : x))
+      cancelEditIncome()
+    } catch { cancelEditIncome() }
   }
 
   const set = (k, v) => setSettings(s => ({ ...s, [k]: v }))
@@ -48,32 +74,39 @@ export default function Settings() {
 
       {/* Income */}
       <div className="settings-section">
-        <h3>💼 Renda</h3>
-        <div className="form-grid">
-          <div className="form-group">
-            <label>Salário Mensal (R$)</label>
-            <input className="form-control" type="number" step="0.01" min="0"
-              value={settings.salary || ''} onChange={e => set('salary', parseFloat(e.target.value)||0)}
-              placeholder="0,00" />
-          </div>
-          <div className="form-group">
-            <label>Mês de Referência</label>
-            <input className="form-control" type="month" value={settings.reference_month || ''}
-              onChange={e => set('reference_month', e.target.value)} style={{ colorScheme: 'dark' }} />
-          </div>
-        </div>
-
-        <div style={{ marginTop: 8 }}>
-          <div className="chart-title" style={{ marginBottom: 10 }}>➕ Rendas Extras</div>
+        <h3>💼 Receitas do Mês</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+          Lance aqui todas as suas receitas deste mês (ex: Salário, Freelance, Rendimentos).
+        </p>
+        <div>
+          {income.length === 0 && (
+            <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>
+              ⚠️ Nenhuma receita lançada este mês. Lance seu salário e outras rendas aqui.
+            </div>
+          )}
           {income.map(i => (
-            <div key={i.id} className="income-item">
-              <span className="income-name">{i.name}</span>
-              <span className="income-amount">{fmt(i.amount)}</span>
-              <button className="btn-icon" onClick={() => removeIncome(i.id)}>🗑️</button>
+            <div key={i.id} className="income-item" style={{ alignItems: 'center', gap: 8 }}>
+              {editIncId === i.id ? (
+                <>
+                  <input className="form-control" style={{ flex: 1 }} value={editInc.name}
+                    onChange={e => setEditInc(n => ({ ...n, name: e.target.value }))} />
+                  <input className="form-control" type="number" style={{ maxWidth: 130 }} value={editInc.amount}
+                    onChange={e => setEditInc(n => ({ ...n, amount: e.target.value }))} />
+                  <button className="btn btn-primary btn-sm" onClick={saveEditIncome}>✓</button>
+                  <button className="btn btn-secondary btn-sm" onClick={cancelEditIncome}>Cancelar</button>
+                </>
+              ) : (
+                <>
+                  <span className="income-name">{i.name}</span>
+                  <span className="income-amount">{fmt(i.amount)}</span>
+                  <button className="btn-icon" onClick={() => startEditIncome(i)} title="Editar">✏️</button>
+                  <button className="btn-icon" onClick={() => removeIncome(i.id)} title="Excluir">🗑️</button>
+                </>
+              )}
             </div>
           ))}
           <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-            <input className="form-control" placeholder="Nome da renda (ex: Freelance)"
+            <input className="form-control" placeholder="Nome da receita (ex: Salário)"
               value={newInc.name} onChange={e => setNewInc(n => ({ ...n, name: e.target.value }))} />
             <input className="form-control" type="number" placeholder="Valor (R$)" style={{ maxWidth: 150 }}
               value={newInc.amount} onChange={e => setNewInc(n => ({ ...n, amount: e.target.value }))} />

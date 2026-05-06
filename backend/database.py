@@ -83,23 +83,27 @@ def _column_exists(conn, table: str, column: str) -> bool:
 
 def _migrate(conn):
     """
-    Safely add user_id column to existing tables.
-    Uses PRAGMA table_info to check column existence before ALTER TABLE,
-    avoiding silent failures from the try/except approach.
+    Safely add user_id column to existing tables, and date column to income.
     """
     tables = ["settings", "income", "expenses", "portfolio", "notifications"]
     for table in tables:
         if not _column_exists(conn, table, "user_id"):
             logger.info(f"Migrating table '{table}': adding user_id column")
             try:
-                # Use DEFAULT 1 without NOT NULL — safer for libsql ALTER TABLE
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER DEFAULT 1")
                 conn.commit()
                 logger.info(f"  -> user_id column added to '{table}' successfully")
             except Exception as e:
                 logger.error(f"  -> Failed to add user_id to '{table}': {e}")
-        else:
-            logger.info(f"Table '{table}' already has user_id column — skipping")
+                
+    if not _column_exists(conn, "income", "date"):
+        logger.info(f"Migrating table 'income': adding date column")
+        try:
+            today = datetime.now().strftime("%Y-%m-%d")
+            conn.execute(f"ALTER TABLE income ADD COLUMN date TEXT DEFAULT '{today}'")
+            conn.commit()
+        except Exception as e:
+            logger.error(f"  -> Failed to add date to 'income': {e}")
 
 def init_db():
     """Initialize the database by creating all required tables."""
@@ -135,6 +139,7 @@ def init_db():
             user_id INTEGER DEFAULT 1,
             name TEXT NOT NULL,
             amount REAL NOT NULL,
+            date TEXT NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)

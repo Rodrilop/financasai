@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useOutletContext } from 'react-router-dom'
 import api from '../api/client'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { SkeletonCardsGrid, SkeletonChart, SkeletonTable } from '../components/Skeletons'
@@ -28,12 +28,14 @@ export default function Dashboard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+  const { month } = useOutletContext()
 
   useEffect(() => {
-    api.get('/api/analysis')
+    setLoading(true);
+    api.get(`/api/analysis?month=${month || ''}`)
       .then(r => { setData(r.data); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [])
+  }, [month])
 
   /* ── Skeleton ── */
   if (loading) return (
@@ -99,7 +101,7 @@ export default function Dashboard() {
     <div>
       <div className="page-header" style={{ animation: 'fadeIn 300ms ease' }}>
         <h1>Dashboard</h1>
-        <p>Visão geral das suas finanças — {data.reference_month || 'mês atual'}</p>
+        <p>Visão geral das suas finanças</p>
       </div>
 
       {/* ── KPI Cards (stagger fadeInUp) ── */}
@@ -107,11 +109,11 @@ export default function Dashboard() {
 
         <div className="card card-animated">
           <div className="card-icon">💼</div>
-          <div className="card-label">Renda Total</div>
+          <div className="card-label">Receitas do Mês</div>
           <div className="card-value green">
             R$ <CountUp end={income} decimals={2} locale="pt-BR" />
           </div>
-          <div className="card-sub">Salário + rendas extras</div>
+          <div className="card-sub">{data.previous_balance > 0 ? `+ ${fmt(data.previous_balance)} de saldo anterior` : 'Todas as receitas'}</div>
         </div>
 
         <div className="card card-animated">

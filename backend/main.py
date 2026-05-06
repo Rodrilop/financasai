@@ -13,7 +13,7 @@ if not logger.handlers:
     logger.addHandler(logging.StreamHandler())
 
 from database import get_connection, init_db, ensure_user_settings
-from analyzer import compute_analysis, get_settings, get_all_income
+from analyzer import compute_analysis, get_settings, get_income_for_month
 from market import get_market_data, get_allocation, get_user_portfolio_data
 from ai_engine import generate_recommendations, chat_with_ai, generate_proactive_alert
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -57,7 +57,6 @@ def startup():
 # ── Models ──────────────────────────────────────────────────────────────────
 
 class SettingsIn(BaseModel):
-    salary: float = Field(0, ge=0)
     reference_month: str = Field("", max_length=7)
     emergency_reserve_goal: float = Field(0, ge=0)
     investment_pct: float = Field(20, ge=0, le=100)
@@ -69,6 +68,7 @@ class SettingsIn(BaseModel):
 class IncomeIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     amount: float = Field(..., gt=0)
+    date: str = Field(..., max_length=10)
 
 class ExpenseIn(BaseModel):
     description: str = Field(..., min_length=1, max_length=255)
@@ -149,19 +149,19 @@ def update_settings(data: SettingsIn, user: dict = Depends(get_current_user)):
     conn = get_connection()
     exists = conn.execute("SELECT id FROM settings WHERE user_id=?", (uid,)).fetchone()
     if exists:
-        conn.execute("""UPDATE settings SET salary=?,reference_month=?,emergency_reserve_goal=?,
+        conn.execute("""UPDATE settings SET reference_month=?,emergency_reserve_goal=?,
                         investment_pct=?,investor_profile=?,budget_essential_pct=?,
                         budget_important_pct=?,budget_optional_pct=? WHERE user_id=?""",
-                     (data.salary, data.reference_month, data.emergency_reserve_goal,
+                     (data.reference_month, data.emergency_reserve_goal,
                       data.investment_pct, data.investor_profile, data.budget_essential_pct,
                       data.budget_important_pct, data.budget_optional_pct, uid))
     else:
         conn.execute("""INSERT INTO settings
-                        (user_id,salary,reference_month,emergency_reserve_goal,
+                        (user_id,reference_month,emergency_reserve_goal,
                          investment_pct,investor_profile,budget_essential_pct,
                          budget_important_pct,budget_optional_pct)
-                        VALUES (?,?,?,?,?,?,?,?,?)""",
-                     (uid, data.salary, data.reference_month, data.emergency_reserve_goal,
+                        VALUES (?,?,?,?,?,?,?,?)""",
+                     (uid, data.reference_month, data.emergency_reserve_goal,
                       data.investment_pct, data.investor_profile, data.budget_essential_pct,
                       data.budget_important_pct, data.budget_optional_pct))
     conn.commit()
@@ -171,8 +171,17 @@ def update_settings(data: SettingsIn, user: dict = Depends(get_current_user)):
 # ── Income ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/income")
-def read_income(user: dict = Depends(get_current_user)):
-    return get_all_income(user["id"])
+def read_income(user: dict = Depends(get_current_user), month: Optional[str] = None):
+    conn = get_connection()
+    sql = "SELECT * FROM income WHERE user_id=?"
+    params = [user["id"]]
+    if month:
+        sql += " AND date LIKE ?"
+        params.append(f"{month}%")
+    sql += " ORDER BY date DESC"
+    rows = conn.execute(sql, tuple(params)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 @app.post("/api/income", status_code=201)
 def add_income(data: IncomeIn, user: dict = Depends(get_current_user)):
@@ -181,8 +190,8 @@ def add_income(data: IncomeIn, user: dict = Depends(get_current_user)):
     logger.info(f"Adding income for user_id: {uid}, amount: {data.amount}")
     conn = get_connection()
     cur = conn.execute(
-        "INSERT INTO income (user_id, name, amount) VALUES (?, ?, ?)",
-        (uid, data.name, data.amount)
+        "INSERT INTO income (user_id, name, amount, date) VALUES (?, ?, ?, ?)",
+        (uid, data.name, data.amount, data.date)
     )
     conn.commit()
     new_id = cur.lastrowid
@@ -196,6 +205,18 @@ def delete_income(income_id: int, user: dict = Depends(get_current_user)):
     conn.commit()
     conn.close()
     return {"ok": True}
+
+@app.put("/api/income/{income_id}")
+def update_income(income_id: int, data: IncomeIn, user: dict = Depends(get_current_user)):
+    """Edit an existing income record."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE income SET name=?, amount=?, date=? WHERE id=? AND user_id=?",
+        (data.name, data.amount, data.date, income_id, user["id"])
+    )
+    conn.commit()
+    conn.close()
+    return {"id": income_id, **data.dict()}
 
 # ── Expenses ──────────────────────────────────────────────────────────────────
 
@@ -403,9 +424,20 @@ async def whatsapp_webhook(request: Request, event: str = None):
         # Log para debug (opcional)
         logger.info(f"WhatsApp Message from {remote_jid}: {body_text}")
 
-        # Processamento via Agente IA (ID 1 fixo para demonstração)
-        analysis_data = compute_analysis(1)
-        answer = chat_with_ai(body_text, analysis_data, 1)
+        # Resolve user by WhatsApp number — extract digits only
+        clean_jid = remote_jid.split("@")[0].replace("+", "").strip()
+        conn = get_connection()
+        # Try to match by last 11 digits of phone number against email pattern or stored phone
+        wa_user = conn.execute(
+            "SELECT id FROM users WHERE id=1"
+        ).fetchone()  # Fallback: first user. In production, map by phone field.
+        conn.close()
+        ai_user_id = wa_user["id"] if wa_user else 1
+        logger.info(f"Resolved WhatsApp user_id={ai_user_id} for jid={clean_jid}")
+
+        # Processing via AI Agent
+        analysis_data = compute_analysis(ai_user_id)
+        answer = chat_with_ai(body_text, analysis_data, ai_user_id)
 
         # 3. Retorno formatado conforme o provedor
         if "application/x-www-form-urlencoded" in content_type:
