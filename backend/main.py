@@ -21,7 +21,9 @@ from auth import get_password_hash, verify_password, create_access_token, get_cu
 
 app = FastAPI(title="FinançasAI API")
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"],
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+_allowed_origins = [o.strip() for o in _raw_origins.split(",")] if _raw_origins != "*" else ["*"]
+app.add_middleware(CORSMiddleware, allow_origins=_allowed_origins,
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 @app.exception_handler(Exception)

@@ -10,6 +10,7 @@ import Settings from './pages/Settings'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Notifications from './pages/Notifications'
+import Onboarding from './pages/Onboarding'
 import { AuthProvider, AuthContext } from './contexts/AuthContext'
 import { ToastProvider } from './contexts/ToastContext'
 import ToastContainer from './components/ToastContainer'
@@ -84,7 +85,7 @@ function MonthSelector({ month, setMonth }) {
 }
 
 function ProtectedApp() {
-  const { user, loading } = useContext(AuthContext);
+  const { user, loading, isNewUser, completeOnboarding } = useContext(AuthContext);
   const currentYm = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(currentYm)
 
@@ -94,6 +95,11 @@ function ProtectedApp() {
 
   if (loading) return <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh'}}>Carregando...</div>;
   if (!user) return <Navigate to="/login" replace />;
+
+  // Show onboarding for new users before the main app
+  if (isNewUser) {
+    return <Onboarding userName={user.name} onComplete={completeOnboarding} />
+  }
 
   return (
     // key={user.name} forces React to fully re-mount all child pages when user switches
