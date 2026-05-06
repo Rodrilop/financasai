@@ -98,9 +98,9 @@ export default function Agent() {
     setMessages(newMsgs);
     
     const payload = { 
-        question: text || "Aqui está um comprovante/cupom.", 
-        image_base64: selectedImage 
+        question: text || "Aqui está um comprovante/cupom."
     };
+    if (selectedImage) payload.image_base64 = selectedImage;
 
     setInput('');
     setSelectedImage(null);
@@ -111,7 +111,9 @@ export default function Agent() {
       const res = await api.post('/api/chat', payload);
       setMessages([...newMsgs, { role: 'assistant', content: res.data.answer }]);
     } catch (err) {
-      setMessages([...newMsgs, { role: 'assistant', content: 'Desculpe, ocorreu um erro ao processar sua solicitação ou a imagem.' }]);
+      console.error("Chat Error:", err);
+      const errDetail = err.response?.data?.detail || err.response?.status || err.message;
+      setMessages([...newMsgs, { role: 'assistant', content: `Desculpe, ocorreu um erro: ${errDetail}` }]);
     } finally {
       setLoading(false);
     }

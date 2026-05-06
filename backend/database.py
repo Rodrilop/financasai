@@ -101,24 +101,6 @@ def _migrate(conn):
         else:
             logger.info(f"Table '{table}' already has user_id column — skipping")
 
-def get_schema_info():
-    """Return schema info for diagnostics endpoint."""
-    conn = get_connection()
-    result = {}
-    for table in ["users", "settings", "income", "expenses"]:
-        try:
-            cols = conn.execute(f"PRAGMA table_info({table})").fetchall()
-            count_row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
-            count = count_row[0] if count_row else 0
-            result[table] = {
-                "columns": [r["name"] for r in cols],
-                "row_count": count,
-            }
-        except Exception as e:
-            result[table] = {"error": str(e)}
-    conn.close()
-    return result
-
 def init_db():
     """Initialize the database by creating all required tables."""
     conn = get_connection()

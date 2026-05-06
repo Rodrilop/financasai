@@ -12,7 +12,7 @@ logger.setLevel(logging.INFO)
 if not logger.handlers:
     logger.addHandler(logging.StreamHandler())
 
-from database import get_connection, init_db, ensure_user_settings, get_schema_info
+from database import get_connection, init_db, ensure_user_settings
 from analyzer import compute_analysis, get_settings, get_all_income
 from market import get_market_data, get_allocation, get_user_portfolio_data
 from ai_engine import generate_recommendations, chat_with_ai, generate_proactive_alert
@@ -449,13 +449,3 @@ async def whatsapp_webhook(request: Request, event: str = None):
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-@app.get("/api/debug/schema")
-def debug_schema():
-    """Diagnostic: show table columns and row counts in Turso."""
-    return get_schema_info()
-
-@app.get("/api/debug/me")
-def debug_me(user: dict = Depends(get_current_user)):
-    """Diagnostic: return the user_id resolved from the JWT token."""
-    return {"user_id": user["id"], "email": user["email"]}
