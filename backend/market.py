@@ -36,20 +36,55 @@ def fetch_batch(items: List[Dict]) -> List[Dict]:
     results = []
     for item in items:
         try:
-            t = yf.Ticker(f"{item['ticker']}.SA")
-            info = t.info
-            hist = t.history(period="5d")
-            if hist.empty:
-                price = change = None
-            else:
-                price = round(hist["Close"].iloc[-1], 2)
-                prev = hist["Close"].iloc[-2] if len(hist) >= 2 else price
-                change = round((price - prev) / prev * 100, 2) if prev else 0
+            ticker_name = f"{item['ticker']}.SA"
+            t = yf.Ticker(ticker_name)
+            
+            # Using fast_info or info for current price is often more reliable
+            price = None
+            try:
+                price = t.fast_info.last_price
+            except:
+                info = t.info
+                price = info.get("currentPrice") or info.get("regularMarketPrice")
 
+            # Get 5d history for change %
+            hist = t.history(period="5d")
+            change = 0
+            if not hist.empty and len(hist) >= 2:
+                last_close = hist["Close"].iloc[-1]
+                prev_close = hist["Close"].iloc[-2]
+                price = price or last_close
+                change = round((price - prev_close) / prev_close * 100, 2)
+            
+            # Dividends
+            info = t.info
             raw_dy = info.get("dividendYield", None)
             dy = round(raw_dy * 100, 2) if raw_dy else None
             pvp = info.get("priceToBook", None)
             pvp = round(pvp, 2) if pvp else None
+
+            # New Dividend Fields
+            last_div = info.get("lastDividendValue")
+            
+            # Calendar for ex-date
+            ex_date = None
+            try:
+                cal = t.calendar
+                if cal and 'Ex-Dividend Date' in cal:
+                    ex_date = cal['Ex-Dividend Date'].strftime("%Y-%m-%d")
+            except:
+                pass
+
+            # Sum last 12m dividends
+            divs_12m = 0
+            try:
+                # series of dividends
+                d_series = t.dividends
+                if not d_series.empty:
+                    # last 12 months sum
+                    divs_12m = d_series.tail(12).sum()
+            except:
+                pass
 
             # Sanitize NaN values for JSON
             def clean_nan(val):
@@ -62,6 +97,9 @@ def fetch_batch(items: List[Dict]) -> List[Dict]:
                             "change_pct": clean_nan(change),
                             "dy": clean_nan(dy), 
                             "pvp": clean_nan(pvp), 
+                            "last_dividend": clean_nan(last_div),
+                            "ex_date": ex_date,
+                            "divs_12m": clean_nan(divs_12m),
                             "signal": signal(dy, pvp)})
         except Exception as e:
             results.append({**item, "price": None, "change_pct": None,
@@ -107,29 +145,33 @@ def get_user_portfolio_data(user_id: int) -> Dict:
     conn.close()
 
     if not rows:
-        return {"items": [], "total_equity": 0, "total_profit": 0, "total_profit_pct": 0}
+        return {"items": [], "total_equity": 0, "total_profit": 0, "total_profit_pct": 0, "total_dividends_12m": 0}
 
     items = []
     total_invested = 0
     total_equity = 0
+    total_divs_12m = 0
 
-    # Fetch live data using the existing fetch_batch logic
-    # fetch_batch expects dicts with 'ticker'
     batch_items = [{"id": r["id"], "ticker": r["ticker"], "qty": r["quantity"], "avg_price": r["average_price"]} for r in rows]
     live_data = fetch_batch(batch_items)
 
     for item in live_data:
         qty = item["qty"]
         avg_price = item["avg_price"]
-        current_price = item.get("price") or avg_price  # Fallback if fetch fails
+        current_price = item.get("price") or avg_price
         
         invested = qty * avg_price
         equity = qty * current_price
         profit = equity - invested
         profit_pct = (profit / invested * 100) if invested > 0 else 0
 
+        # Dividend calculations
+        divs_12m_unit = item.get("divs_12m") or 0
+        item_total_divs_12m = divs_12m_unit * qty
+
         total_invested += invested
         total_equity += equity
+        total_divs_12m += item_total_divs_12m
 
         items.append({
             "id": item["id"],
@@ -141,6 +183,10 @@ def get_user_portfolio_data(user_id: int) -> Dict:
             "equity": equity,
             "profit": profit,
             "profit_pct": profit_pct,
+            "last_dividend": item.get("last_dividend"),
+            "ex_date": item.get("ex_date"),
+            "divs_12m": item_total_divs_12m,
+            "yoc": (divs_12m_unit / avg_price * 100) if avg_price > 0 else 0,
             "change_pct": item.get("change_pct", 0),
             "error": item.get("error")
         })
@@ -153,5 +199,6 @@ def get_user_portfolio_data(user_id: int) -> Dict:
         "total_invested": total_invested,
         "total_equity": total_equity,
         "total_profit": total_profit,
-        "total_profit_pct": total_profit_pct
+        "total_profit_pct": total_profit_pct,
+        "total_dividends_12m": total_divs_12m
     }

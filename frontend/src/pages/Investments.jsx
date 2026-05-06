@@ -143,18 +143,43 @@ export default function Investments() {
         
         {loadPort ? <SkeletonTable rows={3} /> : portfolio && (
           <div>
-            <div style={{ display: 'flex', gap: 24, marginBottom: 16, background: 'var(--bg-base)', padding: 16, borderRadius: 8 }}>
-                <div>Total Investido<br/><strong style={{ fontSize: 18 }}>{fmt(portfolio.total_invested)}</strong></div>
-                <div>Saldo Atual<br/><strong style={{ fontSize: 18 }}>{fmt(portfolio.total_equity)}</strong></div>
-                <div style={{ color: portfolio.total_profit >= 0 ? '#10b981' : '#ef4444' }}>
-                   Lucro / Prejuízo<br/>
-                   <strong style={{ fontSize: 18 }}>{fmt(portfolio.total_profit)} ({portfolio.total_profit_pct.toFixed(2)}%)</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16, marginBottom: 20 }}>
+                <div className="card" style={{ padding: 16 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Total Investido</div>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(portfolio.total_invested)}</div>
+                </div>
+                <div className="card" style={{ padding: 16 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Saldo Atual</div>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(portfolio.total_equity)}</div>
+                </div>
+                <div className="card" style={{ padding: 16 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Lucro / Prejuízo</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: portfolio.total_profit >= 0 ? '#10b981' : '#ef4444' }}>
+                        {fmt(portfolio.total_profit)} ({portfolio.total_profit_pct.toFixed(2)}%)
+                    </div>
+                </div>
+                <div className="card" style={{ padding: 16, border: '1px solid var(--accent-light)', background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.05), transparent)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--accent)', marginBottom: 4 }}>Proventos (Est. 12m)</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>{fmt(portfolio.total_dividends_12m)}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>Estimativa anualizada</div>
                 </div>
             </div>
 
             <div className="table-container" style={{ marginBottom: 16, maxHeight: 300, overflowY: 'auto' }}>
-              <table className="table">
-                <thead><tr><th>Ativo</th><th>Qtd</th><th>Preço Médio</th><th>Preço Atual</th><th>Saldo</th><th>Lucro/Prej.</th><th></th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Ativo</th>
+                    <th>Qtd</th>
+                    <th>P. Médio</th>
+                    <th>P. Atual</th>
+                    <th>Saldo</th>
+                    <th>L/P (%)</th>
+                    <th>Últ. Prov.</th>
+                    <th>Data EX</th>
+                    <th>YoC (%)</th>
+                    <th></th>
+                  </tr>
+                </thead>
                 <tbody>
                   {portfolio.items?.map(i => (
                     <tr key={i.id}>
@@ -164,8 +189,11 @@ export default function Investments() {
                       <td style={{ color: i.current_price ? 'inherit' : 'var(--text-muted)' }}>{i.current_price ? fmt(i.current_price) : 'N/D'}</td>
                       <td>{fmt(i.equity)}</td>
                       <td style={{ color: i.profit >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
-                        {fmt(i.profit)} ({i.profit_pct.toFixed(2)}%)
+                        {i.profit_pct.toFixed(2)}%
                       </td>
+                      <td style={{ color: 'var(--accent)' }}>{i.last_dividend ? `R$ ${i.last_dividend.toFixed(2)}` : '—'}</td>
+                      <td style={{ fontSize: 11 }}>{i.ex_date || '—'}</td>
+                      <td style={{ color: '#10b981' }}>{i.yoc ? i.yoc.toFixed(2) + '%' : '—'}</td>
                       <td style={{ textAlign: 'right' }}><button className="btn btn-secondary btn-sm" onClick={() => deletePortfolioItem(i.id)}>🗑️</button></td>
                     </tr>
                   ))}
