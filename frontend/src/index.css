@@ -463,7 +463,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .stocks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 
 .mobile-header { display: none; }
-.agent-container { display: flex; flex-direction: column; height: calc(100vh - 120px); maxWidth: 800px; margin: 0 auto; }
+.agent-container { display: flex; flex-direction: column; height: calc(100vh - 120px); max-width: 800px; margin: 0 auto; }
 
 @media (max-width: 768px) {
   .agent-container { height: calc(100vh - 160px); }
