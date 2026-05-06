@@ -24,6 +24,56 @@
   --radius-sm: 8px;
   --sidebar-w: 240px;
   --transition: all 0.2s ease;
+  /* ── Animation tokens ── */
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --anim-fast: 180ms;
+  --anim-med: 320ms;
+  --anim-slow: 500ms;
+}
+
+/* ══════════════════════════════════
+   KEYFRAMES
+══════════════════════════════════ */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideOutRight {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(32px); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes toastProgress {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+@keyframes pulseDot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%           { transform: scale(1);   opacity: 1; }
+}
+
+@keyframes progressFill {
+  from { width: 0%; }
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -275,12 +325,126 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 /* ── Loading ── */
 .loading { display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted); gap: 10px; font-size: 14px; }
 .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Empty State ── */
+/* ── Skeleton Screens ── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 25%,
+    var(--bg-hover)    50%,
+    var(--bg-elevated) 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  display: block;
+}
+
+/* ── Empty State (novo) ── */
 .empty { text-align: center; padding: 48px; color: var(--text-muted); }
 .empty .icon { font-size: 48px; margin-bottom: 12px; }
 .empty p { font-size: 14px; }
+
+.empty-state {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  padding: 40px 24px;
+  gap: 10px;
+  animation: fadeIn var(--anim-med) var(--ease-out);
+}
+.empty-state-icon {
+  font-size: 52px;
+  line-height: 1;
+  margin-bottom: 4px;
+  filter: drop-shadow(0 0 12px rgba(16,185,129,0.2));
+}
+.empty-state-title {
+  font-size: 15px; font-weight: 700;
+  color: var(--text);
+}
+.empty-state-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  max-width: 300px;
+  line-height: 1.6;
+}
+.empty-state-btn { margin-top: 8px; }
+
+/* ── Card Animations (stagger fadeInUp) ── */
+.card-animated {
+  animation: fadeInUp var(--anim-slow) var(--ease-out) both;
+}
+.card-animated:nth-child(1) { animation-delay: 0ms; }
+.card-animated:nth-child(2) { animation-delay: 80ms; }
+.card-animated:nth-child(3) { animation-delay: 160ms; }
+.card-animated:nth-child(4) { animation-delay: 240ms; }
+
+.chart-card-animated {
+  animation: fadeInUp var(--anim-slow) var(--ease-out) both;
+}
+.chart-card-animated:nth-child(1) { animation-delay: 300ms; }
+.chart-card-animated:nth-child(2) { animation-delay: 380ms; }
+
+/* ── Toast System ── */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  max-width: 380px;
+  width: 100%;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  position: relative;
+  overflow: hidden;
+  pointer-events: all;
+  animation: slideInRight var(--anim-med) var(--ease-out) both;
+}
+.toast.toast-exit {
+  animation: slideOutRight var(--anim-med) var(--ease-out) forwards;
+}
+.toast-success { border-left: 3px solid var(--accent); }
+.toast-error   { border-left: 3px solid var(--red); }
+.toast-info    { border-left: 3px solid var(--blue); }
+.toast-warning { border-left: 3px solid var(--amber); }
+
+.toast-icon { font-size: 16px; flex-shrink: 0; }
+.toast-message { flex: 1; font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.4; }
+.toast-close {
+  background: none; border: none;
+  color: var(--text-muted); cursor: pointer;
+  font-size: 18px; line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+  transition: color var(--anim-fast);
+}
+.toast-close:hover { color: var(--text); }
+
+.toast-progress {
+  position: absolute;
+  bottom: 0; left: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: left center;
+  animation: toastProgress linear both;
+}
+.toast-success .toast-progress { background: var(--accent); }
+.toast-error   .toast-progress { background: var(--red); }
+.toast-info    .toast-progress { background: var(--blue); }
+.toast-warning .toast-progress { background: var(--amber); }
 
 /* ── Utility ── */
 .flex { display: flex; }
@@ -389,6 +553,14 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   
   .modal { max-height: 85vh; padding: 20px; }
   .modal-footer button { width: 100%; }
+
+  /* Toast: bottom-center acima da bottom nav no mobile */
+  .toast-container {
+    bottom: 80px;
+    right: 16px;
+    left: 16px;
+    max-width: none;
+  }
 }
 
 /* ── Auth ── */

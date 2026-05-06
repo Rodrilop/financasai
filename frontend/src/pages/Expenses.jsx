@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import api from '../api/client'
 import Modal from '../components/Modal'
+import { useToast } from '../contexts/ToastContext'
+import EmptyState from '../components/EmptyState'
+import { SkeletonTable } from '../components/Skeletons'
 
 const CATEGORIES = ['Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Assinaturas','Vestuário','Pets','Outros']
 const PRIORITIES = ['Essencial','Importante','Opcional']
@@ -10,6 +13,7 @@ function fmt(v) { return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimu
 const EMPTY_FORM = { description: '', amount: '', category: 'Alimentação', priority: 'Essencial', date: new Date().toISOString().slice(0,10), notes: '' }
 
 export default function Expenses() {
+  const toast = useToast()
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null) // null | 'add' | 'edit'
@@ -33,22 +37,44 @@ export default function Expenses() {
   
   const save = async () => {
     const body = { ...form, amount: parseFloat(form.amount) || 0 }
-    if (!body.description || !body.amount) return alert('Preencha descrição e valor.')
-    if (editId) await api.put(`/api/expenses/${editId}`, body)
-    else await api.post('/api/expenses', body)
-    setModal(null); load()
+    if (!body.description || !body.amount) {
+      toast.warning('Preencha a descrição e o valor da despesa.')
+      return
+    }
+    try {
+      if (editId) {
+        await api.put(`/api/expenses/${editId}`, body)
+        toast.success('Despesa atualizada com sucesso!')
+      } else {
+        await api.post('/api/expenses', body)
+        toast.success('✅ Despesa adicionada!')
+      }
+      setModal(null); load()
+    } catch {
+      toast.error('Erro ao salvar despesa. Tente novamente.')
+    }
   }
 
   const remove = async (id) => {
-    if (!confirm('Excluir esta despesa?')) return
-    await api.delete(`/api/expenses/${id}`)
-    load()
+    if (!window.confirm('Excluir esta despesa?')) return
+    try {
+      await api.delete(`/api/expenses/${id}`)
+      toast.info('Despesa removida.')
+      load()
+    } catch {
+      toast.error('Erro ao excluir despesa.')
+    }
   }
 
   const bulkDelete = async () => {
-    if (!selected.length || !confirm(`Excluir ${selected.length} despesas?`)) return
-    await api.post('/api/expenses/bulk-delete', { ids: selected })
-    setSelected([]); load()
+    if (!selected.length || !window.confirm(`Excluir ${selected.length} despesa(s)?`)) return
+    try {
+      await api.post('/api/expenses/bulk-delete', { ids: selected })
+      toast.info(`${selected.length} despesa(s) removida(s).`)
+      setSelected([]); load()
+    } catch {
+      toast.error('Erro ao excluir despesas.')
+    }
   }
 
   const toggle = (id) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
@@ -85,8 +111,17 @@ export default function Expenses() {
         <div className="table-header">
           <h3>{expenses.length} despesas — Total: <span className="text-accent">{fmt(total)}</span></h3>
         </div>
-        {loading ? <div className="loading"><div className="spinner" /></div> : expenses.length === 0 ? (
-          <div className="empty"><div className="icon">📭</div><p>Nenhuma despesa encontrada.</p></div>
+        {loading ? (
+          <SkeletonTable rows={5} />
+        ) : expenses.length === 0 ? (
+          <EmptyState
+            icon="🧾"
+            title="Nenhuma despesa encontrada"
+            subtitle="Adicione sua primeira despesa ou ajuste os filtros de busca."
+            actionLabel="+ Adicionar Despesa"
+            onAction={openAdd}
+            height="220px"
+          />
         ) : (
           <table>
             <thead>

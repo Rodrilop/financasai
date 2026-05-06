@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import api from '../api/client';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Agent() {
+  const toast = useToast()
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -39,7 +41,7 @@ export default function Agent() {
       setIsRecording(true);
     } catch (err) {
       console.error(err);
-      alert("Erro ao acessar microfone. Verifique as permissões do seu navegador.");
+      toast.error('Erro ao acessar microfone. Verifique as permissões do seu navegador.');
     }
   };
 
@@ -136,8 +138,14 @@ export default function Agent() {
               setLoading(true);
               try {
                 const res = await api.post('/api/agent/trigger');
-                alert(res.data.alert ? 'Dica Gerada! Verifique o sininho 🔔' : 'A IA analisou seus dados e achou que está tudo ok por enquanto.');
-              } catch(e) { alert('Erro ao disparar motor.'); }
+                if (res.data.alert) {
+                  toast.info('💡 Dica gerada! Verifique o sininho 🔔');
+                } else {
+                  toast.success('A IA analisou seus dados e está tudo bem!');
+                }
+              } catch(e) {
+                toast.error('Erro ao disparar motor proativo.');
+              }
               setLoading(false);
             }}
             disabled={loading}

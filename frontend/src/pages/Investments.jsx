@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import api from '../api/client'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { SkeletonChart, SkeletonTable } from '../components/Skeletons'
+import EmptyState from '../components/EmptyState'
 
 function fmt(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
 
@@ -81,7 +83,7 @@ export default function Investments() {
       <div className="charts-grid" style={{ marginBottom: 16 }}>
         <div className="chart-card">
           <div className="chart-title">📐 Alocação Sugerida</div>
-          {loadInv ? <div className="loading"><div className="spinner" /></div> : invData ? (
+          {loadInv ? <SkeletonChart height={180} /> : invData ? (
             <>
               <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-muted)' }}>
                 💰 Valor disponível para investir: <strong style={{ color: 'var(--accent)' }}>{fmt(invData.investment_suggested)}</strong>
@@ -115,7 +117,7 @@ export default function Investments() {
                 <Tooltip formatter={(v) => v + '%'} contentStyle={{ background: '#0f1829', border: '1px solid #1e3050', borderRadius: 8 }} />
               </PieChart>
             </ResponsiveContainer>
-          ) : <div className="loading"><div className="spinner" /></div>}
+          ) : <SkeletonChart height={220} />}
         </div>
       </div>
 
@@ -139,7 +141,7 @@ export default function Investments() {
       <div className="chart-card" style={{ marginBottom: 16 }}>
         <div className="chart-title">💼 Minha Carteira (Tempo Real B3)</div>
         
-        {loadPort ? <div className="loading"><div className="spinner"/></div> : portfolio && (
+        {loadPort ? <SkeletonTable rows={3} /> : portfolio && (
           <div>
             <div style={{ display: 'flex', gap: 24, marginBottom: 16, background: 'var(--bg-base)', padding: 16, borderRadius: 8 }}>
                 <div>Total Investido<br/><strong style={{ fontSize: 18 }}>{fmt(portfolio.total_invested)}</strong></div>
@@ -167,7 +169,18 @@ export default function Investments() {
                       <td style={{ textAlign: 'right' }}><button className="btn btn-secondary btn-sm" onClick={() => deletePortfolioItem(i.id)}>🗑️</button></td>
                     </tr>
                   ))}
-                  {!portfolio.items?.length && <tr><td colSpan="7" style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>Sua carteira está vazia. Adicione ativos abaixo para acompanhar as cotações ao vivo.</td></tr>}
+                  {portfolio.items?.length === 0 && (
+                    <tr>
+                      <td colSpan="7" style={{ padding: 0 }}>
+                        <EmptyState
+                          icon="💼"
+                          title="Sua carteira está vazia"
+                          subtitle="Adicione ativos abaixo para acompanhar as cotações ao vivo."
+                          height="180px"
+                        />
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -204,7 +217,7 @@ export default function Investments() {
         </div>
 
         {loadMkt ? (
-          <div className="loading"><div className="spinner" /></div>
+          <SkeletonChart height={200} />
         ) : (
           <div className="stocks-grid">
             {(activeTab === 'acoes' ? market?.stocks : market?.fiis)?.map(s => (

@@ -11,6 +11,8 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Notifications from './pages/Notifications'
 import { AuthProvider, AuthContext } from './contexts/AuthContext'
+import { ToastProvider } from './contexts/ToastContext'
+import ToastContainer from './components/ToastContainer'
 
 const NAV = [
   { to: '/',            icon: '📊', label: 'Dashboard' },
@@ -85,22 +87,25 @@ function ProtectedApp() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route element={<ProtectedApp />}>
-            <Route path="/"            element={<Dashboard />} />
-            <Route path="/expenses"    element={<Expenses />} />
-            <Route path="/analysis"    element={<Analysis />} />
-            <Route path="/agent"       element={<Agent />} />
-            <Route path="/notifications" element={<Notifications />} />
-            <Route path="/investments" element={<Investments />} />
-            <Route path="/settings"    element={<Settings />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route element={<ProtectedApp />}>
+              <Route path="/"            element={<Dashboard />} />
+              <Route path="/expenses"    element={<Expenses />} />
+              <Route path="/analysis"    element={<Analysis />} />
+              <Route path="/agent"       element={<Agent />} />
+              <Route path="/notifications" element={<Notifications />} />
+              <Route path="/investments" element={<Investments />} />
+              <Route path="/settings"    element={<Settings />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+        <ToastContainer />
+      </AuthProvider>
+    </ToastProvider>
   )
 }
