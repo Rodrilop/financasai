@@ -5,6 +5,9 @@ import json
 import requests as _requests
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 

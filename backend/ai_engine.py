@@ -103,11 +103,47 @@ def _execute_tool(name: str, args: dict, user_id: int, hoje: str) -> tuple[str, 
             f"Despesa '{desc}' de R$ {val:.2f} registrada com sucesso na categoria '{cat}'.",
             f"add_expense:{desc}:{val}"
         )
+    elif name == "add_income":
+        desc = args.get("desc", "Renda Extra")
+        val  = float(args.get("val", 0))
+        _db_exec(
+            "INSERT INTO income (user_id, name, amount, date, account) VALUES (?,?,?,?,?)",
+            (user_id, desc, val, hoje, "Geral")
+        )
+        return (
+            f"Renda '{desc}' de R$ {val:.2f} registrada com sucesso.",
+            f"add_income:{desc}:{val}"
+        )
     elif name == "update_salary":
         val = float(args.get("val", 0))
-        _db_exec("UPDATE users SET salary = ? WHERE id = ?", (val, user_id))
+        # 1. Update the base salary in settings table (legacy/reference)
+        _db_exec(
+            "UPDATE settings SET salary=? WHERE user_id=?",
+            (val, user_id)
+        )
+        # 2. Add/Update as an income entry for the current month
+        # Check if there's already a "Salário" entry for this month to avoid duplicates
+        conn = get_connection()
+        mes = hoje[:7] # YYYY-MM
+        existing = conn.execute(
+            "SELECT id FROM income WHERE user_id=? AND (name LIKE 'Salário%' OR name LIKE 'Renda Mensal%') AND date LIKE ?",
+            (user_id, f"{mes}%")
+        ).fetchone()
+        conn.close()
+
+        if existing:
+            _db_exec(
+                "UPDATE income SET amount=?, date=? WHERE id=?",
+                (val, hoje, existing["id"])
+            )
+        else:
+            _db_exec(
+                "INSERT INTO income (user_id, name, amount, date, account) VALUES (?,?,?,?,?)",
+                (user_id, "Salário", val, hoje, "Geral")
+            )
+
         return (
-            f"Renda atualizada para R$ {val:.2f} com sucesso.",
+            f"Renda mensal atualizada para R$ {val:.2f} com sucesso.",
             f"update_salary:{val}"
         )
     elif name == "market_info":
@@ -123,11 +159,14 @@ def _build_final_response(summaries: list[str]) -> str:
         if s.startswith("add_expense:"):
             _, desc, val = s.split(":", 2)
             lines.append(f"• Despesa **{desc}** de **R$ {float(val):.2f}** registrada com sucesso! ✅")
+        elif s.startswith("add_income:"):
+            _, desc, val = s.split(":", 2)
+            lines.append(f"• Receita **{desc}** de **R$ {float(val):.2f}** registrada! 💰")
         elif s.startswith("update_salary:"):
             _, val = s.split(":", 1)
             lines.append(f"• Renda atualizada para **R$ {float(val):.2f}** ✅")
     if lines:
-        return "Pronto! Aqui está o que foi feito:\n\n" + "\n".join(lines) + "\n\nAcesse **Despesas** no menu para conferir."
+        return "Pronto! Aqui está o que foi feito:\n\n" + "\n".join(lines) + "\n\nAcesse o **Dashboard** para ver o novo saldo."
     return "✅ Ação executada com sucesso!"
 
 
@@ -155,12 +194,20 @@ def _chat_groq(question: str, analysis: dict, user_id: int, hoje: str) -> str:
             }, "required": ["val"]}
         }},
         {"type": "function", "function": {
-            "name": "market_info",
-            "description": "Consulta cotações (Dólar, Euro, Bitcoin, Selic, ações B3).",
+            "name": "add_income",
+            "description": "Registra uma entrada de dinheiro, renda extra ou bônus.",
             "parameters": {"type": "object", "properties": {
-                "q": {"type": "string", "description": "Ativo a consultar (ex: DÓLAR, PETR4, BTC, SELIC)"}
-            }, "required": ["q"]}
+                "desc": {"type": "string", "description": "Descrição da renda (ex: Venda de teclado, Bônus)"},
+                "val":  {"type": "number", "description": "Valor em reais"}
+            }, "required": ["desc", "val"]}
         }},
+        {"type": "function", "function": {
+            "name": "market_info",
+            "description": "Consulta cotações financeiras (Dólar, Euro, Bitcoin, Selic, ações B3).",
+            "parameters": {"type": "object", "properties": {
+                "q": {"type": "string", "description": "Ativo ou indicador (ex: Dólar, PETR4, Selic)"}
+            }, "required": ["q"]}
+        }}
     ]
 
     instruction = (
@@ -169,10 +216,11 @@ def _chat_groq(question: str, analysis: dict, user_id: int, hoje: str) -> str:
         f"Gastos este mês: R$ {analysis.get('total_expenses', 0):.2f}.\n\n"
         "REGRAS:\n"
         "- Use 'add_expense' para registrar qualquer gasto mencionado.\n"
-        "- Use 'update_salary' para atualizar salário/renda.\n"
+        "- Use 'add_income' para rendas extras, bônus, vendas ou qualquer entrada adicional.\n"
+        "- Use 'update_salary' APENAS se o usuário disser que o salário dele mudou ou quiser definir a renda base mensal.\n"
         "- Use 'market_info' para cotações.\n"
         "- Responda sempre em português brasileiro, de forma amigável e concisa.\n"
-        "- Após executar uma ferramenta, confirme o resultado ao usuário."
+        "- Após executar uma ferramenta, confirme o resultado ao usuário de forma natural."
     )
 
     messages = [
@@ -293,14 +341,26 @@ def _chat_gemini(question: str, analysis: dict, user_id: int, hoje: str) -> str:
             required=["q"]
         )
     )
+    add_income_fn = gtypes.FunctionDeclaration(
+        name="add_income",
+        description="Registra uma entrada de dinheiro, renda extra ou bônus.",
+        parameters=gtypes.Schema(
+            type=gtypes.Type.OBJECT,
+            properties={
+                "desc": gtypes.Schema(type=gtypes.Type.STRING, description="Descrição da renda"),
+                "val":  gtypes.Schema(type=gtypes.Type.NUMBER, description="Valor em reais"),
+            },
+            required=["desc", "val"]
+        )
+    )
 
-    gemini_tools = gtypes.Tool(function_declarations=[add_expense_fn, update_salary_fn, market_info_fn])
+    gemini_tools = gtypes.Tool(function_declarations=[add_expense_fn, add_income_fn, update_salary_fn, market_info_fn])
 
     system_instruction = (
         f"Você é o Assistente Financeiro do FinançasAI. Hoje é {hoje}.\n"
         f"Renda do usuário: R$ {analysis.get('total_income', 0):.2f}. "
         f"Gastos este mês: R$ {analysis.get('total_expenses', 0):.2f}.\n\n"
-        "Use as ferramentas disponíveis para registrar gastos, atualizar renda ou consultar cotações. "
+        "Use as ferramentas disponíveis para registrar gastos (add_expense), registrar rendas (add_income), atualizar renda mensal ou consultar cotações. "
         "Responda sempre em português brasileiro, de forma amigável e concisa."
     )
 
