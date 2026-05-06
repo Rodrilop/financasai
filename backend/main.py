@@ -101,6 +101,9 @@ class UserLogin(BaseModel):
     email: str = Field(..., min_length=5, max_length=100)
     password: str = Field(..., min_length=6, max_length=100)
 
+class ProfileIn(BaseModel):
+    phone: Optional[str] = Field(None, max_length=20)
+
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
 @app.post("/api/auth/register")
@@ -132,7 +135,32 @@ def login(user: UserLogin):
     # Ensure settings exist (safety net for pre-existing users)
     ensure_user_settings(db_user["id"])
     access_token = create_access_token(data={"sub": db_user["email"]})
-    return {"access_token": access_token, "token_type": "bearer", "name": db_user["name"]}
+    return {"access_token": access_token, "token_type": "bearer", "name": db_user["name"], "phone": db_user["phone"]}
+
+@app.get("/api/profile")
+def get_profile(user: dict = Depends(get_current_user)):
+    """Return the authenticated user's profile info."""
+    conn = get_connection()
+    row = conn.execute("SELECT id, name, email, phone FROM users WHERE id=?", (user["id"],)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    return {"id": row["id"], "name": row["name"], "email": row["email"], "phone": row["phone"]}
+
+@app.put("/api/profile")
+def update_profile(data: ProfileIn, user: dict = Depends(get_current_user)):
+    """Update the authenticated user's phone number for WhatsApp integration."""
+    uid = user["id"]
+    # Normalize: keep only digits
+    clean_phone = ''.join(filter(str.isdigit, data.phone or ''))
+    if clean_phone and len(clean_phone) < 10:
+        raise HTTPException(status_code=400, detail="Número de telefone inválido. Use o formato com DDD (ex: 11999998888).")
+    conn = get_connection()
+    conn.execute("UPDATE users SET phone=? WHERE id=?", (clean_phone or None, uid))
+    conn.commit()
+    conn.close()
+    logger.info(f"Updated phone for user_id={uid}: {clean_phone}")
+    return {"ok": True, "phone": clean_phone or None}
 
 # ── Settings ─────────────────────────────────────────────────────────────────
 
@@ -424,15 +452,32 @@ async def whatsapp_webhook(request: Request, event: str = None):
         # Log para debug (opcional)
         logger.info(f"WhatsApp Message from {remote_jid}: {body_text}")
 
-        # Resolve user by WhatsApp number — extract digits only
-        clean_jid = remote_jid.split("@")[0].replace("+", "").strip()
+        # Resolve user by WhatsApp JID number
+        # Normalize: keep only digits from the JID (e.g. "5511999998888@s.whatsapp.net" -> "5511999998888")
+        clean_jid = ''.join(filter(str.isdigit, remote_jid.split("@")[0]))
         conn = get_connection()
-        # Try to match by last 11 digits of phone number against email pattern or stored phone
-        wa_user = conn.execute(
-            "SELECT id FROM users WHERE id=1"
-        ).fetchone()  # Fallback: first user. In production, map by phone field.
+        wa_user = None
+
+        # Try to match by last 11 digits (local number with DDD, no country code)
+        if clean_jid:
+            # Try full match first
+            wa_user = conn.execute(
+                "SELECT id FROM users WHERE phone=?", (clean_jid,)
+            ).fetchone()
+            # If not found, try matching by last 11 digits (strips country code 55)
+            if not wa_user and len(clean_jid) > 11:
+                suffix = clean_jid[-11:]
+                wa_user = conn.execute(
+                    "SELECT id FROM users WHERE phone LIKE ?", (f"%{suffix}",)
+                ).fetchone()
+
+        if not wa_user:
+            logger.warning(f"WhatsApp: no user found for JID={clean_jid}. Message ignored for security.")
+            conn.close()
+            return {"status": "ignored", "reason": "user_not_found"}
+
+        ai_user_id = wa_user["id"]
         conn.close()
-        ai_user_id = wa_user["id"] if wa_user else 1
         logger.info(f"Resolved WhatsApp user_id={ai_user_id} for jid={clean_jid}")
 
         # Processing via AI Agent

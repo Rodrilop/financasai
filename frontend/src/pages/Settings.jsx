@@ -10,14 +10,35 @@ export default function Settings() {
   const [newInc, setNewInc]       = useState({ name: '', amount: '' })
   const [saved, setSaved]         = useState(false)
   const [loading, setLoading]     = useState(true)
+  const [phone, setPhone]         = useState('')
+  const [phoneSaved, setPhoneSaved] = useState(false)
 
   const { month } = useOutletContext()
 
   useEffect(() => {
-    Promise.all([api.get('/api/settings'), api.get(`/api/income?month=${month || ''}`)])
-      .then(([s, i]) => { setSettings(s.data); setIncome(i.data); setLoading(false) })
+    Promise.all([
+      api.get('/api/settings'),
+      api.get(`/api/income?month=${month || ''}`),
+      api.get('/api/profile')
+    ])
+      .then(([s, i, p]) => {
+        setSettings(s.data)
+        setIncome(i.data)
+        setPhone(p.data.phone || '')
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }, [month])
+
+  const savePhone = async () => {
+    try {
+      await api.put('/api/profile', { phone })
+      setPhoneSaved(true)
+      setTimeout(() => setPhoneSaved(false), 2500)
+    } catch (err) {
+      alert(err?.response?.data?.detail || 'Erro ao salvar número.')
+    }
+  }
 
   const save = async () => {
     await api.put('/api/settings', settings)
@@ -70,6 +91,31 @@ export default function Settings() {
       <div className="page-header">
         <h1>⚙️ Configurações</h1>
         <p>Personalize seu perfil financeiro e metas</p>
+      </div>
+
+      {/* Perfil / WhatsApp */}
+      <div className="settings-section">
+        <h3>📱 Meu Perfil — Integração WhatsApp</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+          Cadastre seu número de WhatsApp (com DDD, sem espaços ou caracteres especiais) para usar o assistente financeiro diretamente pelo WhatsApp.
+        </p>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <input
+            className="form-control"
+            placeholder="Ex: 11999998888"
+            value={phone}
+            onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
+            maxLength={13}
+            style={{ maxWidth: 220 }}
+          />
+          <button className="btn btn-secondary" onClick={savePhone}>💾 Salvar Número</button>
+          {phoneSaved && <span style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600 }}>✅ Número salvo!</span>}
+        </div>
+        {phone && (
+          <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 8 }}>
+            📞 Número cadastrado: <strong style={{ color: 'var(--text)' }}>+{phone}</strong>
+          </p>
+        )}
       </div>
 
       {/* Income */}

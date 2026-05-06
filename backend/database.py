@@ -105,6 +105,15 @@ def _migrate(conn):
         except Exception as e:
             logger.error(f"  -> Failed to add date to 'income': {e}")
 
+    if not _column_exists(conn, "users", "phone"):
+        logger.info("Migrating table 'users': adding phone column")
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT NULL")
+            conn.commit()
+            logger.info("  -> phone column added to 'users' successfully")
+        except Exception as e:
+            logger.error(f"  -> Failed to add phone to 'users': {e}")
+
 def init_db():
     """Initialize the database by creating all required tables."""
     conn = get_connection()
@@ -116,6 +125,7 @@ def init_db():
             name TEXT NOT NULL,
             email TEXT UNIQUE NOT NULL,
             hashed_password TEXT NOT NULL,
+            phone TEXT DEFAULT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
