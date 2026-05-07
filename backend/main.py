@@ -560,115 +560,112 @@ def trigger_agent(user: dict = Depends(get_current_user)):
         return {"status": "success", "alert": alert}
     return {"status": "success", "message": "Nenhuma dica necessária no momento."}
 
-# ── WhatsApp Webhook ──────────────────────────────────────────────────────────
+# ── WhatsApp Webhook (Meta / WhatsApp Cloud API) ─────────────────────────────
+
+@app.get("/api/webhook/whatsapp")
+async def whatsapp_verify(request: Request):
+    """Webhook verification for Meta WhatsApp Cloud API."""
+    params = request.query_params
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+    
+    verify_token = os.getenv("WHATSAPP_VERIFY_TOKEN", "financasai_token")
+    
+    if mode == "subscribe" and token == verify_token:
+        from fastapi.responses import Response
+        return Response(content=challenge, media_type="text/plain")
+    raise HTTPException(status_code=403, detail="Verification failed")
 
 @app.post("/api/webhook/whatsapp")
-@app.post("/api/webhook/whatsapp/{event}")
-async def whatsapp_webhook(request: Request, event: str = None):
+async def whatsapp_webhook(request: Request):
     """
-    Endpoint híbrido para integração com WhatsApp:
-    - Suporta Twilio (x-www-form-urlencoded)
-    - Suporta Evolution API v2 (JSON - messages.upsert)
+    Handling incoming messages from Meta WhatsApp Cloud API.
     """
     try:
-        content_type = request.headers.get("Content-Type", "")
-        body_text = ""
-        remote_jid = "whatsapp:default" # ID do usuário no WhatsApp
+        body = await request.json()
         
-        # 1. Caso seja Twilio (Form Data)
-        if "application/x-www-form-urlencoded" in content_type:
-            form_data = await request.form()
-            body_text = form_data.get("Body", "")
-            remote_jid = form_data.get("From", "")
+        # Meta JSON path: entry[0].changes[0].value.messages[0]
+        entry = body.get("entry", [])
+        if not entry: return {"status": "ignored"}
+        
+        changes = entry[0].get("changes", [])
+        if not changes: return {"status": "ignored"}
+        
+        value = changes[0].get("value", {})
+        messages = value.get("messages", [])
+        
+        if not messages:
+            # Could be a status update (sent, delivered, etc)
+            return {"status": "ok"}
             
-        # 2. Caso seja Evolution API v2 (JSON)
-        else:
-            json_data = await request.json()
-            # A Evolution API v2 envia os dados dentro de 'data' no evento 'messages.upsert'
-            if json_data.get("event") == "messages.upsert":
-                msg_data = json_data.get("data", {}).get("message", {})
-                # Pega texto de conversa simples ou de resposta/extended
-                body_text = msg_data.get("conversation") or msg_data.get("extendedTextMessage", {}).get("text", "")
-                remote_jid = json_data.get("data", {}).get("key", {}).get("remoteJid", "")
-            else:
-                # Fallback para JSON genérico
-                body_text = json_data.get("message", json_data.get("text", ""))
-
+        msg = messages[0]
+        remote_jid = msg.get("from") # E.g. "5511999998888"
+        body_text = ""
+        
+        if msg.get("type") == "text":
+            body_text = msg.get("text", {}).get("body", "")
+        elif msg.get("type") == "audio":
+            # For audio, we would need to download the media from Meta and transcribe it.
+            # Simplified for now: just text.
+            body_text = "[Mensagem de voz recebida]"
+            
         if not body_text:
             return {"status": "ignored"}
 
-        # Log para debug (opcional)
         logger.info(f"WhatsApp Message from {remote_jid}: {body_text}")
 
-        # Resolve user by WhatsApp JID number
-        # Normalize: keep only digits from the JID (e.g. "5511999998888@s.whatsapp.net" -> "5511999998888")
-        clean_jid = ''.join(filter(str.isdigit, remote_jid.split("@")[0]))
+        # Resolve user by Phone Number
+        clean_jid = ''.join(filter(str.isdigit, remote_jid))
         conn = get_connection()
         wa_user = None
 
-        # Try to match by last 11 digits (local number with DDD, no country code)
-        if clean_jid:
-            # Try full match first
-            wa_user = conn.execute(
-                "SELECT id FROM users WHERE phone=?", (clean_jid,)
-            ).fetchone()
-            # If not found, try matching by last 11 digits (strips country code 55)
-            if not wa_user and len(clean_jid) > 11:
-                suffix = clean_jid[-11:]
-                wa_user = conn.execute(
-                    "SELECT id FROM users WHERE phone LIKE ?", (f"%{suffix}",)
-                ).fetchone()
+        # Match by phone
+        wa_user = conn.execute("SELECT id FROM users WHERE phone=?", (clean_jid,)).fetchone()
+        # Fallback to last 11 digits
+        if not wa_user and len(clean_jid) > 11:
+            suffix = clean_jid[-11:]
+            wa_user = conn.execute("SELECT id FROM users WHERE phone LIKE ?", (f"%{suffix}",)).fetchone()
 
         if not wa_user:
-            logger.warning(f"WhatsApp: no user found for JID={clean_jid}. Message ignored for security.")
+            logger.warning(f"WhatsApp: no user found for phone={clean_jid}")
             conn.close()
             return {"status": "ignored", "reason": "user_not_found"}
 
         ai_user_id = wa_user["id"]
         conn.close()
-        logger.info(f"Resolved WhatsApp user_id={ai_user_id} for jid={clean_jid}")
 
-        # Processing via AI Agent
+        # AI Processing
         analysis_data = compute_analysis(ai_user_id)
         answer = chat_with_ai(body_text, analysis_data, ai_user_id)
 
-        # 3. Retorno formatado conforme o provedor
-        if "application/x-www-form-urlencoded" in content_type:
-            from fastapi.responses import Response
-            twiml = f"<?xml version='1.0' encoding='UTF-8'?><Response><Message>{answer}</Message></Response>"
-            return Response(content=twiml, media_type="application/xml")
+        # Send response via Meta Graph API
+        token = os.getenv("WHATSAPP_CLOUD_TOKEN")
+        phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
         
-        # 4. Caso seja Evolution API, precisamos disparar a resposta de volta via API deles
-        evo_url = os.getenv("EVOLUTION_API_URL")
-        evo_key = os.getenv("EVOLUTION_API_KEY")
-        evo_instance = os.getenv("EVOLUTION_INSTANCE_NAME")
-
-        if evo_url and evo_key and evo_instance:
+        if token and phone_id:
             import requests
-            send_url = f"{evo_url}/message/sendText/{evo_instance}"
-            # Limpa o JID para enviar apenas o número (necessário para Evolution API v2)
-            clean_number = remote_jid.split("@")[0]
-            
-            payload = {
-                "number": clean_number,
-                "text": answer,
-                "delay": 1200, # delay natural de digitação em ms
-                "linkPreview": True
-            }
+            url = f"https://graph.facebook.com/v21.0/{phone_id}/messages"
             headers = {
-                "Content-Type": "application/json",
-                "apikey": evo_key
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
             }
-            try:
-                resp = requests.post(send_url, json=payload, headers=headers)
-                logger.info(f"Resposta da Evolution API: {resp.status_code} - {resp.text}")
-            except Exception as e:
-                logger.error(f"Erro ao enviar resposta via Evolution: {e}")
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": remote_jid,
+                "type": "text",
+                "text": {"body": answer}
+            }
+            resp = requests.post(url, json=payload, headers=headers)
+            if resp.status_code != 200:
+                logger.error(f"Meta API Error: {resp.text}")
+            else:
+                logger.info(f"Response sent to {remote_jid}")
 
-        return {"status": "processed", "reply": answer}
+        return {"status": "processed"}
 
     except Exception as e:
-        logger.error(f"WhatsApp Webhook Error: {e}")
+        logger.error(f"WhatsApp Webhook Error: {e}", exc_info=True)
         return {"error": str(e)}
 
 @app.get("/health")
