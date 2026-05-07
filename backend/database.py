@@ -134,8 +134,14 @@ class TursoConnection:
         results = self._http_execute([{"sql": sql, "args": list(params)}])
         return results[0] if results else TursoResult([], [])
 
+    def executemany(self, sql: str, params_list: list):
+        """Execute multiple statements in a single pipeline."""
+        if not params_list: return
+        stmts = [{"sql": sql, "args": list(p)} for p in params_list]
+        return self._http_execute(stmts)
+
     def cursor(self):
-        return self  # self acts as cursor too
+        return self
 
     def commit(self):
         if self._stmts:

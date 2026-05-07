@@ -358,48 +358,65 @@ async def import_expenses(file: UploadFile = File(...), user: dict = Depends(get
     uid = user["id"]
     content = await file.read()
     decoded = content.decode("utf-8-sig") # handles UTF-8 BOM
-    f = io.StringIO(decoded)
-    reader = csv.DictReader(f, delimiter=None) # detect delimiter automatically in some cases, or default to comma
-    
-    # Try common delimiters if comma fails to find columns
-    if not reader.fieldnames or len(reader.fieldnames) < 2:
+    # Improved CSV detection
+    try:
+        sample = decoded[:2048]
+        sniffer = csv.Sniffer()
+        dialect = sniffer.sniff(sample, delimiters=',;\t|')
         f.seek(0)
-        reader = csv.DictReader(f, delimiter=';')
-        
+        reader = csv.DictReader(f, dialect=dialect)
+    except Exception:
+        # Fallback to comma then semicolon if sniffer fails
+        f.seek(0)
+        reader = csv.DictReader(f, delimiter=',')
+        if not reader.fieldnames or len(reader.fieldnames) < 2:
+            f.seek(0)
+            reader = csv.DictReader(f, delimiter=';')
+
     if not reader.fieldnames:
         raise HTTPException(status_code=400, detail="Formato CSV inválido ou cabeçalhos não encontrados.")
 
     # Mapping logic (Case-insensitive)
-    cols = {name.lower(): name for name in reader.fieldnames}
-    date_col = next((cols[k] for k in ['data', 'date', 'vencimento'] if k in cols), None)
-    desc_col = next((cols[k] for k in ['descrição', 'descricao', 'description', 'histórico', 'historico'] if k in cols), None)
-    val_col  = next((cols[k] for k in ['valor', 'amount', 'total', 'preço', 'preco'] if k in cols), None)
-    cat_col  = next((cols[k] for k in ['categoria', 'category'] if k in cols), None)
+    cols = {name.lower().strip(): name for name in reader.fieldnames}
+    date_col = next((cols[k] for k in ['data', 'date', 'vencimento', 'dia'] if k in cols), None)
+    desc_col = next((cols[k] for k in ['descrição', 'descricao', 'description', 'histórico', 'historico', 'item', 'detalhe'] if k in cols), None)
+    val_col  = next((cols[k] for k in ['valor', 'amount', 'total', 'preço', 'preco', 'pago'] if k in cols), None)
+    cat_col  = next((cols[k] for k in ['categoria', 'category', 'tipo'] if k in cols), None)
 
     if not all([date_col, desc_col, val_col]):
-        raise HTTPException(status_code=400, detail=f"Colunas obrigatórias (Data, Descrição, Valor) não encontradas. Cabeçalhos detectados: {list(reader.fieldnames)}")
+        raise HTTPException(status_code=400, detail=f"Colunas obrigatórias (Data, Descrição, Valor) não encontradas. Detectado: {list(reader.fieldnames)}")
 
     expenses_to_add = []
     for row in reader:
         try:
-            # Clean amount
-            raw_val = row[val_col].replace('R$', '').replace('.', '').replace(',', '.').strip()
+            # Clean amount: remove currency symbols and handle European/Brazilian number format
+            raw_val = str(row[val_col]).replace('R$', '').replace('$', '').strip()
+            # If it has both . and , (e.g. 1.234,56), remove the . and replace , with .
+            if '.' in raw_val and ',' in raw_val:
+                raw_val = raw_val.replace('.', '').replace(',', '.')
+            elif ',' in raw_val:
+                raw_val = raw_val.replace(',', '.')
+                
             amount = abs(float(raw_val))
             
-            # Skip positive values if they are credits in a generic bank statement (optional logic)
-            # if float(raw_val) > 0: continue 
-
             # Normalize date
             raw_date = row[date_col].strip()
-            # Simple parser for common formats: DD/MM/YYYY or YYYY-MM-DD
-            if '/' in raw_date:
-                parts = raw_date.split('/')
-                if len(parts[0]) == 4: # YYYY/MM/DD
-                    d_obj = datetime.strptime(raw_date, "%Y/%m/%d")
-                else: # DD/MM/YYYY
-                    d_obj = datetime.strptime(raw_date, "%d/%m/%Y")
-            else:
-                d_obj = datetime.fromisoformat(raw_date)
+            d_obj = None
+            
+            # Try various formats
+            for fmt in ["%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y", "%m/%d/%Y", "%Y/%m/%d"]:
+                try:
+                    d_obj = datetime.strptime(raw_date, fmt)
+                    break
+                except: continue
+            
+            if not d_obj:
+                try: d_obj = datetime.fromisoformat(raw_date)
+                except: pass
+            
+            if not d_obj:
+                logger.warning(f"Could not parse date: {raw_date}")
+                continue
             
             clean_date = d_obj.strftime("%Y-%m-%d")
             
@@ -408,7 +425,7 @@ async def import_expenses(file: UploadFile = File(...), user: dict = Depends(get
                 row[desc_col].strip(),
                 amount,
                 row.get(cat_col, 'Outros').strip() if cat_col else 'Outros',
-                'Essencial', # Default
+                'Essencial', 
                 clean_date,
                 'Importado via CSV'
             ))
@@ -420,20 +437,20 @@ async def import_expenses(file: UploadFile = File(...), user: dict = Depends(get
         raise HTTPException(status_code=400, detail="Nenhuma despesa válida encontrada no arquivo.")
 
     conn = get_connection()
-    # Batch insert is more efficient but our proxy doesn't have executemany yet
-    # We'll use simple loops for now as Turso HTTP handles one by one or we could add batch support later
-    count = 0
-    for exp in expenses_to_add:
-        conn.execute(
-            "INSERT INTO expenses (user_id, description, amount, category, priority, date, notes) VALUES (?,?,?,?,?,?,?)",
-            exp
-        )
-        count += 1
+    try:
+        sql = "INSERT INTO expenses (user_id, description, amount, category, priority, date, notes) VALUES (?,?,?,?,?,?,?)"
+        if hasattr(conn, 'executemany'):
+            conn.executemany(sql, expenses_to_add)
+        else:
+            # Fallback for standard sqlite3 connection (though it has executemany too)
+            for exp in expenses_to_add:
+                conn.execute(sql, exp)
+        
+        conn.commit()
+    finally:
+        conn.close()
     
-    conn.commit()
-    conn.close()
-    
-    return {"ok": True, "count": count}
+    return {"ok": True, "count": len(expenses_to_add)}
 
 @app.post("/api/expenses/bulk-delete")
 def bulk_delete(data: BulkDeleteIn, user: dict = Depends(get_current_user)):
