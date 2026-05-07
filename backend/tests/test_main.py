@@ -50,13 +50,15 @@ def test_read_settings():
 def test_add_and_read_income():
     """Authenticated user can add and list income entries."""
     headers = register_and_login()
+    today = "2026-05-01"
 
     # Add income
-    response = client.post("/api/income", json={"name": "Salário Teste", "amount": 5000.0}, headers=headers)
+    response = client.post("/api/income", json={"name": "Salário Teste", "amount": 5000.0, "date": today}, headers=headers)
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Salário Teste"
     assert data["amount"] == 5000.0
+    assert data["date"] == today
     income_id = data["id"]
 
     # Read income
