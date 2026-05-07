@@ -166,6 +166,7 @@ export default function Investments() {
             </div>
 
             <div className="table-container" style={{ marginBottom: 16, maxHeight: 300, overflowY: 'auto' }}>
+              <table className="table">
                 <thead>
                   <tr>
                     <th>Ativo</th>
@@ -199,7 +200,7 @@ export default function Investments() {
                   ))}
                   {portfolio.items?.length === 0 && (
                     <tr>
-                      <td colSpan="7" style={{ padding: 0 }}>
+                      <td colSpan="10" style={{ padding: 0 }}>
                         <EmptyState
                           icon="💼"
                           title="Sua carteira está vazia"
