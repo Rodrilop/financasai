@@ -358,6 +358,7 @@ async def import_expenses(file: UploadFile = File(...), user: dict = Depends(get
     uid = user["id"]
     content = await file.read()
     decoded = content.decode("utf-8-sig") # handles UTF-8 BOM
+    f = io.StringIO(decoded)
     # Improved CSV detection
     try:
         sample = decoded[:2048]
