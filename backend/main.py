@@ -590,7 +590,7 @@ async def process_whatsapp_ai(remote_jid: str, body_text: str, ai_user_id: int):
         
         if token and phone_id:
             import requests
-            url = f"https://graph.facebook.com/v21.0/{phone_id}/messages"
+            url = f"https://graph.facebook.com/v22.0/{phone_id}/messages"
             headers = {
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json"
@@ -666,13 +666,14 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
             phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
             if token and phone_id:
                 import requests
-                url = f"https://graph.facebook.com/v21.0/{phone_id}/messages"
+                url = f"https://graph.facebook.com/v22.0/{phone_id}/messages"
                 headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
                 payload = {
                     "messaging_product": "whatsapp", "to": remote_jid, "type": "text",
                     "text": {"body": "Recebi sua mensagem! Estou analisando suas financas, so um momento... ⏳"}
                 }
-                requests.post(url, json=payload, headers=headers)
+                resp = requests.post(url, json=payload, headers=headers)
+                logger.info(f"Immediate feedback status: {resp.status_code} - {resp.text}")
         except Exception as e:
             logger.error(f"Immediate Feedback Error: {e}")
 
