@@ -186,7 +186,7 @@ export default function Agent() {
         <div ref={endRef} />
       </div>
 
-      <div style={{ marginTop: '16px' }}>
+      <div className="chat-input-area">
         <div className="suggestions-bar">
           {suggestions.map((s, i) => (
             <button key={i} className="btn btn-secondary btn-sm" style={{ whiteSpace: 'nowrap', borderRadius: '20px' }} onClick={() => sendMessage(s)}>
