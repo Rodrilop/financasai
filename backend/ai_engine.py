@@ -455,18 +455,24 @@ def chat_with_ai(
             # Fallback: Gemini Vision
             client = _get_gemini()
             if client:
-                from google.genai import types as gtypes
-                image_bytes = base64.b64decode(b64_data)
-                resp = client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=[
-                        "Extraia deste cupom fiscal: Valor Total, Estabelecimento e Categoria.",
-                        gtypes.Part(inline_data=gtypes.Blob(mime_type="image/jpeg", data=image_bytes))
-                    ]
-                )
-                return resp.text
+                try:
+                    from google.genai import types as gtypes
+                    image_bytes = base64.b64decode(b64_data)
+                    resp = client.models.generate_content(
+                        model="gemini-2.0-flash",
+                        contents=[
+                            "Extraia deste cupom fiscal: Valor Total, Estabelecimento e Categoria. Responda no formato: 'Valor: R$ X,XX | Local: Nome | Categoria: Categoria'",
+                            gtypes.Part(inline_data=gtypes.Blob(mime_type="image/jpeg", data=image_bytes))
+                        ]
+                    )
+                    return resp.text
+                except Exception as gemini_err:
+                    err_msg = str(gemini_err).lower()
+                    if "429" in err_msg or "quota" in err_msg:
+                        return "⚠️ Limite de uso do Gemini atingido (Cota Gratuita). Por favor, aguarde 60 segundos e tente enviar a foto novamente."
+                    print(f"Gemini Vision falhou: {gemini_err}")
 
-            return "❌ Nenhuma chave de API de Visão configurada."
+            return "❌ Desculpe, não consegui ler a imagem agora. As cotas gratuitas da IA estão temporariamente esgotadas. Tente novamente em 1 minuto."
 
         # ── ÁUDIO: Transcrição Whisper ─────────────────────────────────────
         if audio_base64:
