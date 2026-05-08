@@ -577,64 +577,9 @@ async def whatsapp_verify(request: Request):
         return Response(content=challenge, media_type="text/plain")
     raise HTTPException(status_code=403, detail="Verification failed")
 
-@app.post("/api/webhook/whatsapp")
-async def whatsapp_webhook(request: Request):
-    """
-    Handling incoming messages from Meta WhatsApp Cloud API.
-    """
+async def process_whatsapp_ai(remote_jid: str, body_text: str, ai_user_id: int):
+    """Background task to process AI and send WhatsApp response."""
     try:
-        body = await request.json()
-        
-        # Meta JSON path: entry[0].changes[0].value.messages[0]
-        entry = body.get("entry", [])
-        if not entry: return {"status": "ignored"}
-        
-        changes = entry[0].get("changes", [])
-        if not changes: return {"status": "ignored"}
-        
-        value = changes[0].get("value", {})
-        messages = value.get("messages", [])
-        
-        if not messages:
-            # Could be a status update (sent, delivered, etc)
-            return {"status": "ok"}
-            
-        msg = messages[0]
-        remote_jid = msg.get("from") # E.g. "5511999998888"
-        body_text = ""
-        
-        if msg.get("type") == "text":
-            body_text = msg.get("text", {}).get("body", "")
-        elif msg.get("type") == "audio":
-            # For audio, we would need to download the media from Meta and transcribe it.
-            # Simplified for now: just text.
-            body_text = "[Mensagem de voz recebida]"
-            
-        if not body_text:
-            return {"status": "ignored"}
-
-        logger.info(f"WhatsApp Message from {remote_jid}: {body_text}")
-
-        # Resolve user by Phone Number
-        clean_jid = ''.join(filter(str.isdigit, remote_jid))
-        conn = get_connection()
-        wa_user = None
-
-        # Match by phone
-        wa_user = conn.execute("SELECT id FROM users WHERE phone=?", (clean_jid,)).fetchone()
-        # Fallback to last 11 digits
-        if not wa_user and len(clean_jid) > 11:
-            suffix = clean_jid[-11:]
-            wa_user = conn.execute("SELECT id FROM users WHERE phone LIKE ?", (f"%{suffix}",)).fetchone()
-
-        if not wa_user:
-            logger.warning(f"WhatsApp: no user found for phone={clean_jid}")
-            conn.close()
-            return {"status": "ignored", "reason": "user_not_found"}
-
-        ai_user_id = wa_user["id"]
-        conn.close()
-
         # AI Processing
         analysis_data = compute_analysis(ai_user_id)
         answer = chat_with_ai(body_text, analysis_data, ai_user_id)
@@ -661,12 +606,84 @@ async def whatsapp_webhook(request: Request):
                 logger.error(f"Meta API Error: {resp.text}")
             else:
                 logger.info(f"Response sent to {remote_jid}")
+    except Exception as e:
+        logger.error(f"Background WhatsApp Task Error: {e}", exc_info=True)
 
-        return {"status": "processed"}
+@app.post("/api/webhook/whatsapp")
+async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
+    """
+    Handling incoming messages from Meta WhatsApp Cloud API.
+    """
+    try:
+        body = await request.json()
+        
+        entry = body.get("entry", [])
+        if not entry: return {"status": "ignored"}
+        
+        changes = entry[0].get("changes", [])
+        if not changes: return {"status": "ignored"}
+        
+        value = changes[0].get("value", {})
+        messages = value.get("messages", [])
+        
+        if not messages:
+            return {"status": "ok"}
+            
+        msg = messages[0]
+        remote_jid = msg.get("from")
+        body_text = ""
+        
+        if msg.get("type") == "text":
+            body_text = msg.get("text", {}).get("body", "")
+        elif msg.get("type") == "audio":
+            body_text = "[Mensagem de voz recebida]"
+            
+        if not body_text:
+            return {"status": "ignored"}
+
+        logger.info(f"WhatsApp Message from {remote_jid}: {body_text}")
+
+        # Resolve user by Phone Number
+        clean_jid = ''.join(filter(str.isdigit, remote_jid))
+        conn = get_connection()
+        wa_user = conn.execute("SELECT id FROM users WHERE phone=?", (clean_jid,)).fetchone()
+        if not wa_user and len(clean_jid) > 11:
+            suffix = clean_jid[-11:]
+            wa_user = conn.execute("SELECT id FROM users WHERE phone LIKE ?", (f"%{suffix}",)).fetchone()
+
+        if not wa_user:
+            logger.warning(f"WhatsApp: no user found for phone={clean_jid}")
+            conn.close()
+            # Important: always return 200 to Meta even if user not found to avoid retries
+            return {"status": "ok"}
+
+        ai_user_id = wa_user["id"]
+        conn.close()
+
+        # Immediate feedback (to confirm webhook works)
+        try:
+            token = os.getenv("WHATSAPP_CLOUD_TOKEN")
+            phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+            if token and phone_id:
+                import requests
+                url = f"https://graph.facebook.com/v21.0/{phone_id}/messages"
+                headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+                payload = {
+                    "messaging_product": "whatsapp", "to": remote_jid, "type": "text",
+                    "text": {"body": "Recebi sua mensagem! Estou analisando suas financas, so um momento... ⏳"}
+                }
+                requests.post(url, json=payload, headers=headers)
+        except Exception as e:
+            logger.error(f"Immediate Feedback Error: {e}")
+
+        # Dispatch AI processing to background tasks
+        background_tasks.add_task(process_whatsapp_ai, remote_jid, body_text, ai_user_id)
+
+        return {"status": "accepted"}
 
     except Exception as e:
         logger.error(f"WhatsApp Webhook Error: {e}", exc_info=True)
-        return {"error": str(e)}
+        return {"status": "ok"} # Always return 200 to Meta
 
 @app.get("/health")
 def health():
