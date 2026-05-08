@@ -25,8 +25,11 @@ def _get_groq():
 def _get_gemini():
     global _gemini_client
     if _gemini_client is None and GEMINI_API_KEY:
-        from google import genai
-        _gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        try:
+            from google import genai
+            _gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        except ImportError:
+            raise ImportError("A biblioteca 'google-genai' não foi encontrada. Verifique se o deploy na Render foi concluído.")
     return _gemini_client
 
 
