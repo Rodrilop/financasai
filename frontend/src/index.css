@@ -541,7 +541,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   
   .main-content {
     padding: 16px;
-    padding-bottom: 100px;
+    padding-bottom: 140px; /* Aumentado de 100px para 140px para garantir visibilidade */
   }
   
   .sidebar {
