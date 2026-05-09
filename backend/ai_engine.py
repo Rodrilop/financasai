@@ -514,7 +514,7 @@ def chat_with_ai(
                         "Content-Type": "application/json"
                     }
                     payload = {
-                        "model": "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
+                        "model": "meta-llama/Llama-Vision-Free",
                         "messages": [{
                             "role": "user",
                             "content": [
