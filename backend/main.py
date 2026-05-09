@@ -667,7 +667,8 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
             return {"status": "ignored", "reason": "user_not_found"}
 
         user_id = wa_user["id"]
-        is_pro = wa_user.get("is_pro", 0)
+        # TursoRow não tem método .get(), acessando a chave diretamente
+        is_pro = wa_user["is_pro"] if wa_user["is_pro"] is not None else 0
         conn.close()
 
         # ── Freemium Logic: WhatsApp Chat is PRO only ──
