@@ -399,7 +399,31 @@ def _chat_gemini(question: str, analysis: dict, user_id: int, hoje: str) -> str:
         )
     )
 
-    gemini_tools = gtypes.Tool(function_declarations=[add_expense_fn, add_income_fn, update_salary_fn, market_info_fn])
+    add_batch_expenses_fn = gtypes.FunctionDeclaration(
+        name="add_batch_expenses",
+        description="Registra múltiplas despesas de uma só vez a partir de uma lista ou extrato.",
+        parameters=gtypes.Schema(
+            type=gtypes.Type.OBJECT,
+            properties={
+                "items": gtypes.Schema(
+                    type=gtypes.Type.ARRAY,
+                    items=gtypes.Schema(
+                        type=gtypes.Type.OBJECT,
+                        properties={
+                            "desc": gtypes.Schema(type=gtypes.Type.STRING, description="Descrição"),
+                            "val":  gtypes.Schema(type=gtypes.Type.NUMBER, description="Valor em reais"),
+                            "cat":  gtypes.Schema(type=gtypes.Type.STRING, description="Categoria"),
+                            "date": gtypes.Schema(type=gtypes.Type.STRING, description="Data YYYY-MM-DD")
+                        },
+                        required=["desc", "val", "cat"]
+                    )
+                )
+            },
+            required=["items"]
+        )
+    )
+
+    gemini_tools = gtypes.Tool(function_declarations=[add_expense_fn, add_income_fn, update_salary_fn, market_info_fn, add_batch_expenses_fn])
 
     system_instruction = (
         f"Você é o Assistente Financeiro do FinançasAI. Hoje é {hoje}.\n"
