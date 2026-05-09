@@ -510,7 +510,7 @@ def chat_with_ai(
                     from google.genai import types as gtypes
                     image_bytes = base64.b64decode(b64_data)
                     resp = client.models.generate_content(
-                        model="gemini-2.0-flash",
+                        model="gemini-2.5-flash",
                         contents=[
                             "Extraia deste cupom fiscal: Valor Total, Estabelecimento e Categoria. Responda no formato: 'Valor: R$ X,XX | Local: Nome | Categoria: Categoria'",
                             gtypes.Part(inline_data=gtypes.Blob(mime_type="image/jpeg", data=image_bytes))
