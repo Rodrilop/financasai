@@ -21,12 +21,25 @@ from ai_engine import generate_recommendations, chat_with_ai, generate_proactive
 from apscheduler.schedulers.background import BackgroundScheduler
 from auth import get_password_hash, verify_password, create_access_token, get_current_user
 
-app = FastAPI(title="FinançasAI API")
+from contextlib import asynccontextmanager
+from scheduler import start_scheduler
 
-_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
-_allowed_origins = [o.strip() for o in _raw_origins.split(",")] if _raw_origins != "*" else ["*"]
-app.add_middleware(CORSMiddleware, allow_origins=_allowed_origins,
-                   allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 1. Inicializa o banco de dados
+    init_db()
+    
+    # 2. Inicia o novo scheduler de retenção (WhatsApp Nudges)
+    start_scheduler()
+    
+    # 3. Mantém o scheduler antigo para alertas internos no dashboard
+    legacy_scheduler = BackgroundScheduler()
+    legacy_scheduler.add_job(run_proactive_agent, 'interval', hours=24)
+    legacy_scheduler.start()
+    
+    yield
+
+app = FastAPI(title="FinançasAI API", lifespan=lifespan)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -50,13 +63,6 @@ def run_proactive_agent():
         logger.error(f"Proactive Error: {e}")
     finally:
         conn.close()
-
-@app.on_event("startup")
-def startup():
-    init_db()
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(run_proactive_agent, 'interval', hours=24)
-    scheduler.start()
 
 # ── Models ──────────────────────────────────────────────────────────────────
 
@@ -649,16 +655,34 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
         wa_user = conn.execute("SELECT id FROM users WHERE phone=?", (clean_jid,)).fetchone()
         if not wa_user and len(clean_jid) > 11:
             suffix = clean_jid[-11:]
-            wa_user = conn.execute("SELECT id FROM users WHERE phone LIKE ?", (f"%{suffix}",)).fetchone()
-
+            wa_user = conn.execute("SELECT id, is_pro FROM users WHERE phone LIKE ?", (f"%{suffix}",)).fetchone()
+    
         if not wa_user:
-            logger.warning(f"WhatsApp: no user found for phone={clean_jid}")
             conn.close()
-            # Important: always return 200 to Meta even if user not found to avoid retries
-            return {"status": "ok"}
+            return {"status": "ignored", "reason": "user_not_found"}
 
-        ai_user_id = wa_user["id"]
+        user_id = wa_user["id"]
+        is_pro = wa_user.get("is_pro", 0)
         conn.close()
+
+        # ── Freemium Logic: WhatsApp Chat is PRO only ──
+        if not is_pro:
+            # Send upsell message instead of processing with AI
+            token = os.getenv("WHATSAPP_CLOUD_TOKEN")
+            phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+            if token and phone_id:
+                import requests
+                url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
+                headers = {"Authorization": f"Bearer {token}"}
+                payload = {
+                    "messaging_product": "whatsapp",
+                    "recipient_type": "individual",
+                    "to": remote_jid,
+                    "type": "text",
+                    "text": {"body": "🌟 *FinançasAI PRO* 🌟\n\nOlá! Notei que você está tentando usar o chat via WhatsApp. Esta é uma funcionalidade exclusiva para membros PRO.\n\nAssine o plano PRO para:\n✅ Chat via WhatsApp ilimitado\n✅ Leitura automática de cupons fiscais (fotos)\n✅ Dicas personalizadas diárias\n\nFale com nosso suporte para ativar sua conta!"}
+                }
+                requests.post(url, json=payload, headers=headers)
+            return {"status": "upsell_sent"}
 
         # Immediate feedback (to confirm webhook works)
         try:

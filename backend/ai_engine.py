@@ -149,6 +149,25 @@ def _execute_tool(name: str, args: dict, user_id: int, hoje: str) -> tuple[str, 
             f"Renda mensal atualizada para R$ {val:.2f} com sucesso.",
             f"update_salary:{val}"
         )
+    elif name == "add_batch_expenses":
+        items = args.get("items", [])
+        count = 0
+        total = 0
+        for item in items:
+            desc = item.get("desc", "Despesa")
+            val  = float(item.get("val", 0))
+            cat  = item.get("cat", "Outros")
+            data_item = item.get("date", hoje)
+            _db_exec(
+                "INSERT INTO expenses (user_id, description, amount, category, priority, date) VALUES (?,?,?,?,?,?)",
+                (user_id, desc, val, cat, "Importante", data_item)
+            )
+            count += 1
+            total += val
+        return (
+            f"Processadas {count} despesas totalizando R$ {total:.2f}.",
+            f"add_batch_expenses:{count}:{total}"
+        )
     elif name == "market_info":
         result = get_market_data_tool(args.get("q", ""))
         return result, None
@@ -165,6 +184,9 @@ def _build_final_response(summaries: list[str]) -> str:
         elif s.startswith("add_income:"):
             _, desc, val = s.split(":", 2)
             lines.append(f"• Receita **{desc}** de **R$ {float(val):.2f}** registrada! 💰")
+        elif s.startswith("add_batch_expenses:"):
+            _, count, val = s.split(":", 2)
+            lines.append(f"• **Importação em Lote**: Processadas **{count}** transações totalizando **R$ {float(val):.2f}**! 📑✅")
         elif s.startswith("update_salary:"):
             _, val = s.split(":", 1)
             lines.append(f"• Renda atualizada para **R$ {float(val):.2f}** ✅")
@@ -205,6 +227,25 @@ def _chat_groq(question: str, analysis: dict, user_id: int, hoje: str) -> str:
             }, "required": ["desc", "val"]}
         }},
         {"type": "function", "function": {
+            "name": "add_batch_expenses",
+            "description": "Registra múltiplas despesas de uma só vez a partir de uma lista ou extrato.",
+            "parameters": {"type": "object", "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "desc": {"type": "string", "description": "Descrição"},
+                            "val":  {"type": "number", "description": "Valor"},
+                            "cat":  {"type": "string", "description": "Categoria"},
+                            "date": {"type": "string", "description": "Data YYYY-MM-DD"}
+                        },
+                        "required": ["desc", "val", "cat"]
+                    }
+                }
+            }, "required": ["items"]}
+        }},
+        {"type": "function", "function": {
             "name": "market_info",
             "description": "Consulta cotações financeiras (Dólar, Euro, Bitcoin, Selic, ações B3).",
             "parameters": {"type": "object", "properties": {
@@ -218,8 +259,9 @@ def _chat_groq(question: str, analysis: dict, user_id: int, hoje: str) -> str:
         f"Renda do usuário: R$ {analysis.get('total_income', 0):.2f}. "
         f"Gastos este mês: R$ {analysis.get('total_expenses', 0):.2f}.\n\n"
         "REGRAS:\n"
-        "- Use 'add_expense' para registrar qualquer gasto mencionado.\n"
-        "- Use 'add_income' para rendas extras, bônus, vendas ou qualquer entrada adicional.\n"
+        "- Use 'add_expense' para registrar um gasto único.\n"
+        "- Use 'add_batch_expenses' para processar listas, extratos de banco ou múltiplos gastos de uma vez.\n"
+        "- Use 'add_income' para rendas extras, bônus ou vendas.\n"
         "- Use 'update_salary' APENAS se o usuário disser que o salário dele mudou ou quiser definir a renda base mensal.\n"
         "- Use 'market_info' para cotações.\n"
         "- Responda sempre em português brasileiro, de forma amigável e concisa.\n"
