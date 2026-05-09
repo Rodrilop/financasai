@@ -41,6 +41,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="FinançasAI API", lifespan=lifespan)
 
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+_allowed_origins = [o.strip() for o in _raw_origins.split(",")] if _raw_origins != "*" else ["*"]
+app.add_middleware(CORSMiddleware, allow_origins=_allowed_origins,
+                   allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Catch all exceptions globally and log them."""
