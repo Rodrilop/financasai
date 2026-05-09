@@ -503,36 +503,7 @@ def chat_with_ai(
         if image_base64:
             b64_data = image_base64.split("base64,")[1] if "base64," in image_base64 else image_base64
 
-            # 1. Tenta Together AI (Conta Premium Validada)
-            together_key = os.getenv("TOGETHER_API_KEY")
-            if together_key:
-                import requests
-                try:
-                    url = "https://api.together.xyz/v1/chat/completions"
-                    headers = {
-                        "Authorization": f"Bearer {together_key}",
-                        "Content-Type": "application/json"
-                    }
-                    payload = {
-                        "model": "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
-                        "messages": [{
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": "Extraia deste cupom fiscal: Valor Total, Estabelecimento e Categoria. Responda no formato conciso: 'Valor: R$ X,XX | Local: Nome | Categoria: Categoria'"},
-                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_data}"}}
-                            ]
-                        }],
-                        "temperature": 0.1
-                    }
-                    res = requests.post(url, json=payload, headers=headers)
-                    if res.status_code == 200:
-                        return res.json()["choices"][0]["message"]["content"]
-                    else:
-                        print(f"Together AI Vision falhou: {res.text}")
-                except Exception as t_err:
-                    print(f"Erro na requisição Together AI: {t_err}")
-
-            # 2. Leitura de Fallback: Gemini Vision
+            # Leitura Exclusiva: Gemini Vision
             client = _get_gemini()
             if client:
                 try:
