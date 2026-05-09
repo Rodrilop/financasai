@@ -503,22 +503,36 @@ def chat_with_ai(
         if image_base64:
             b64_data = image_base64.split("base64,")[1] if "base64," in image_base64 else image_base64
 
-            # Tenta Groq Vision primeiro
-            groq = _get_groq()
-            if groq:
+            # 1. Tenta Together AI (Melhor Opção Gratuita)
+            together_key = os.getenv("TOGETHER_API_KEY")
+            if together_key:
+                import requests
                 try:
-                    resp = groq.chat.completions.create(
-                        model="llama-3.2-11b-vision-preview",
-                        messages=[{"role": "user", "content": [
-                            {"type": "text",      "text": "Extraia deste cupom: Valor Total, Estabelecimento e Categoria."},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_data}"}}
-                        ]}]
-                    )
-                    return resp.choices[0].message.content
-                except Exception as gv_err:
-                    print(f"Groq Vision falhou: {gv_err}")
+                    url = "https://api.together.xyz/v1/chat/completions"
+                    headers = {
+                        "Authorization": f"Bearer {together_key}",
+                        "Content-Type": "application/json"
+                    }
+                    payload = {
+                        "model": "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
+                        "messages": [{
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Extraia deste cupom fiscal: Valor Total, Estabelecimento e Categoria. Responda no formato conciso: 'Valor: R$ X,XX | Local: Nome | Categoria: Categoria'"},
+                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_data}"}}
+                            ]
+                        }],
+                        "temperature": 0.1
+                    }
+                    res = requests.post(url, json=payload, headers=headers)
+                    if res.status_code == 200:
+                        return res.json()["choices"][0]["message"]["content"]
+                    else:
+                        print(f"Together AI Vision falhou: {res.text}")
+                except Exception as t_err:
+                    print(f"Erro na requisição Together AI: {t_err}")
 
-            # Fallback: Gemini Vision
+            # 2. Fallback: Gemini Vision (com tratamento de cotas)
             client = _get_gemini()
             if client:
                 try:
@@ -535,10 +549,10 @@ def chat_with_ai(
                 except Exception as gemini_err:
                     err_msg = str(gemini_err).lower()
                     if "429" in err_msg or "quota" in err_msg:
-                        return "⚠️ Limite de uso do Gemini atingido (Cota Gratuita). Por favor, aguarde 60 segundos e tente enviar a foto novamente."
+                        return "⚠️ Limite de uso do Gemini atingido. (Cota Gratuita). Por favor, aguarde ou adicione a TOGETHER_API_KEY no painel."
                     print(f"Gemini Vision falhou: {gemini_err}")
 
-            return "❌ Desculpe, não consegui ler a imagem agora. As cotas gratuitas da IA estão temporariamente esgotadas. Tente novamente em 1 minuto."
+            return "❌ Desculpe, não consegui ler a imagem. Configure a chave TOGETHER_API_KEY no arquivo .env para ativar a leitura avançada."
 
         # ── ÁUDIO: Transcrição Whisper ─────────────────────────────────────
         if audio_base64:
